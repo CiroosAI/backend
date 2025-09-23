@@ -1,0 +1,88 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+README-FRONTEND.md
+README-PAYMENT.md
+SETUP.md
+SETUP-LOCAL.md
+how-to-run.md
+*.md
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+env.example
+
+# Development files
+docker-compose.dev.yml
+docker-compose.yml
+docker-compose.prod.yml
+
+# Scripts
+scripts/
+security_tests/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts
+*.exe
+main.exe
+project.exe
+
+# Test files
+*_test.go
+test.http
+
+# Development databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node modules (if any)
+node_modules/
+
+# Coverage reports
+coverage.out
+*.cover
+
+# Go specific
+vendor/
+
+# Docker files
+Dockerfile.dev
+docker-compose.override.yml
+
+# SSL certificates (should be mounted as volumes)
+ssl/
+certs/
+
+# Nginx config (should be mounted as volume)
+nginx.conf
+
+# Backup files
+*.bak
+*.backup

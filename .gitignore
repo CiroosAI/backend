@@ -1,0 +1,93 @@
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+main.exe
+project.exe
+
+# Go test files
+*.test
+*.out
+coverage.out
+*.cover
+
+# Go modules
+vendor/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# SSL certificates
+ssl/
+certs/
+*.pem
+*.key
+*.crt
+
+# Docker volumes
+mysql_data/
+redis_data/
+nginx_logs/
+
+# Backup files
+*.bak
+*.backup
+
+# Node modules (if any frontend assets)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime files
+*.pid
+*.sock
+
+# Coverage reports
+coverage/
+*.coverprofile
+
+# Air (Go live reload) files
+.air.toml
+tmp/
+
+# Local development files
+docker-compose.override.yml

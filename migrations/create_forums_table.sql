@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS forums (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    reward DECIMAL(15,2) DEFAULT 0,
+    description VARCHAR(60) NOT NULL,
+    image VARCHAR(255) NOT NULL,
+    status ENUM('Accepted', 'Pending', 'Rejected') DEFAULT 'Pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+DROP TABLE forums;

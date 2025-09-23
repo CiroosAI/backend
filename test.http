@@ -1,0 +1,188 @@
+@baseUrl = http://localhost:8080
+@name = John Doe
+@number = 0812000000011
+@password = secret12
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTcyMDM0NzEsImlkIjo0LCJuYW1lIjoiSm9obiBEb2UifQ.dXIazJXc76y-wV70xy4xZU20mYCCSWqyg7n8nEvFi4A
+
+### Register - success (no referral)
+POST {{baseUrl}}/api/register
+Content-Type: application/json
+
+{
+  "name": "{{name}}",
+  "number": "{{number}}",
+  "password": "{{password}}",
+  "password_confirmation": "{{password}}",
+  "referral_code": ""
+}
+
+### Login - success (captures token)
+POST {{baseUrl}}/api/login
+Content-Type: application/json
+
+{
+  "number": "{{number}}",
+  "password": "{{password}}"
+}
+
+> {%
+  try {
+    const res = JSON.parse(response.body);
+    if (res && res.success && res.data && res.data.token) {
+      client.global.set("token", res.data.token);
+      client.log("Token saved to {{token}}");
+    } else {
+      client.log("Login ok but token not found in response");
+    }
+  } catch (e) {
+    client.log("Failed to parse login response: " + e);
+  }
+%}
+
+### Login - invalid credentials
+POST {{baseUrl}}/api/login
+Content-Type: application/json
+
+{
+  "number": "{{number}}",
+  "password": "wrongpass"
+}
+
+### Get User Information
+GET {{baseUrl}}/api/users/info
+Authorization: Bearer {{token}}
+
+### Protected example - ping
+GET {{baseUrl}}/api/ping
+Authorization: Bearer {{token}}
+
+### Register - password mismatch
+POST {{baseUrl}}/api/register
+Content-Type: application/json
+
+{
+  "name": "Jane Doe",
+  "number": "081200000002",
+  "password": "{{password}}",
+  "password_confirmation": "beda123",
+  "referral_code": ""
+}
+
+### Register - duplicate number (run after first success to trigger conflict)
+POST {{baseUrl}}/api/register
+Content-Type: application/json
+
+{
+  "name": "Another User",
+  "number": "{{number}}",
+  "password": "{{password}}",
+  "password_confirmation": "{{password}}",
+  "referral_code": ""
+}
+
+### Register - referral code not found
+POST {{baseUrl}}/api/register
+Content-Type: application/json
+
+{
+  "name": "Ref Test",
+  "number": "08120000000003",
+  "password": "{{password}}",
+  "password_confirmation": "{{password}}",
+  "referral_code": "5BGHRL5Pl"
+}
+
+### List Products
+GET {{baseUrl}}/api/products
+
+### Create Investment (QRIS) - Star 2 example
+POST {{baseUrl}}/api/users/investments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "product_id": 3,
+  "amount": 5000000,
+  "payment_method": "BANK",
+  "payment_channel": "BCA"
+}
+
+### List My Investments
+GET {{baseUrl}}/api/users/investments
+Authorization: Bearer {{token}}
+
+> {%
+  try {
+    const res = JSON.parse(response.body);
+    if (res && res.success && res.data && Array.isArray(res.data.investments) && res.data.investments.length > 0) {
+      const id = res.data.investments[0].id;
+      client.global.set("investment_id", String(id));
+      client.log("investment_id set to " + id);
+    } else {
+      client.log("No investments found to set investment_id");
+    }
+  } catch (e) {
+    client.log("Failed to parse investments list: " + e);
+  }
+%}
+
+### Get Investment By ID (uses {{investment_id}})
+GET {{baseUrl}}/api/users/investments/{{investment_id}}
+Authorization: Bearer {{token}}
+
+### Cron: Process Daily Returns (requires X-CRON-KEY header)
+POST {{baseUrl}}/api/cron/daily-returns
+X-CRON-KEY: your_cron_key_here
+
+### Simulate Kyta Webhook (Success)
+POST {{baseUrl}}/api/payments/kyta/webhook
+Content-Type: application/json
+
+{
+  "reference_id": "PUT_ORDER_ID_HERE",
+  "status": "PAID",
+  "response_code": "2000500",
+  "id": "payment-123"
+}
+
+### Spin - List Prizes
+GET {{baseUrl}}/api/spin-prize-list
+Authorization: Bearer {{token}}
+
+### Spin - Last Spin Status
+GET {{baseUrl}}/api/users/last-spin
+Authorization: Bearer {{token}}
+
+### Spin - Claim Prize
+POST {{baseUrl}}/api/users/spin
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "code": "SPIN_100K"
+}
+
+### Get Bank List
+GET {{baseUrl}}/api/bank
+Authorization: Bearer {{token}}
+
+### Add Bank Account
+POST {{baseUrl}}/api/users/bank
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "bank_id": 2,
+  "account_name": "John Doe",
+  "account_number": "757654123611"
+}
+
+### Withdrawal
+POST {{baseUrl}}/api/users/withdrawal
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "amount": 99000,
+  "bank_account_id": 1
+}

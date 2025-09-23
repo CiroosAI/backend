@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: sf-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "rootpassword"
+      MYSQL_DATABASE: sf
+    volumes:
+      - ./database/full_db.sql:/docker-entrypoint-initdb.d/full_db.sql:ro
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3307:3306" # map host 3307 to container 3306 to avoid conflicts
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpassword"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: sf-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  app:
+    build:
+      context: .
+    container_name: sf-app-dev
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      ENV: development
+      PORT: 8080
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASS: "rootpassword"
+      DB_NAME: sf
+      JWT_SECRET: supersecretjwtkey
+      REDIS_ADDR: redis:6379
+      REDIS_PASS: ""
+      REDIS_DB: 0
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/src:cached
+
+volumes:
+  mysql_data:
+
