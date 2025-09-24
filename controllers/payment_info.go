@@ -41,46 +41,51 @@ func PutPaymentInfo(w http.ResponseWriter, r *http.Request) {
 		utils.WriteJSON(w, http.StatusUnauthorized, utils.APIResponse{Success: false, Message: "Unauthorized"})
 		return
 	}
+	
 	var body models.PaymentSettings
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Invalid JSON"})
 		return
 	}
+	
 	db := database.DB
 	var ps models.PaymentSettings
+	
+	// Cek apakah sudah ada data
 	if err := db.First(&ps).Error; err != nil {
-		// create if not exists
+		// Jika tidak ada, create baru
 		ps = models.PaymentSettings{
 			PakasirAPIKey:  body.PakasirAPIKey,
 			PakasirProject: body.PakasirProject,
-			DepositAmount: body.DepositAmount,
-			BankName:      body.BankName,
-			BankCode:      body.BankCode,
-			AccountNumber: body.AccountNumber,
-			AccountName:   body.AccountName,
+			DepositAmount:  body.DepositAmount,
+			BankName:       body.BankName,
+			BankCode:       body.BankCode,
+			AccountNumber:  body.AccountNumber,
+			AccountName:    body.AccountName,
 			WithdrawAmount: body.WithdrawAmount,
-			WishlistID:    body.WishlistID,
+			WishlistID:     body.WishlistID,
 		}
 		if err := db.Create(&ps).Error; err != nil {
-			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Failed to save"})
+			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Failed to create"})
 			return
 		}
 	} else {
-		updates := map[string]interface{}{
-			"pakasir_api_key":  body.PakasirAPIKey,
-			"pakasir_project": body.PakasirProject,
-			"deposit_amount": body.DepositAmount,
-			"bank_name":      body.BankName,
-			"bank_code":      body.BankCode,
-			"account_number": body.AccountNumber,
-			"account_name":   body.AccountName,
-			"withdraw_amount": body.WithdrawAmount,
-			"wishlist_id":    body.WishlistID,
-		}
-		if err := db.Model(&ps).Updates(updates).Error; err != nil {
+		// Jika ada, update existing
+		ps.PakasirAPIKey = body.PakasirAPIKey
+		ps.PakasirProject = body.PakasirProject
+		ps.DepositAmount = body.DepositAmount
+		ps.BankName = body.BankName
+		ps.BankCode = body.BankCode
+		ps.AccountNumber = body.AccountNumber
+		ps.AccountName = body.AccountName
+		ps.WithdrawAmount = body.WithdrawAmount
+		ps.WishlistID = body.WishlistID
+		
+		if err := db.Save(&ps).Error; err != nil {
 			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Failed to update"})
 			return
 		}
 	}
+	
 	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "OK", Data: ps})
 }

@@ -23,7 +23,7 @@ func InitRouter() *mux.Router {
 	// Add CORS middleware
 	r.Use(func(next http.Handler) http.Handler {
 		return handlers.CORS(
-			handlers.AllowedOrigins([]string{"https://yvhkzv-ip-103-154-178-68.tunnelmole.net", "http://localhost:3000", "http://localhost:3001"}),
+			handlers.AllowedOrigins([]string{"*"}),
 			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
 			handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-VLA-KEY"}),
 			handlers.AllowCredentials(),

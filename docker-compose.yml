@@ -61,6 +61,8 @@ services:
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
       DB_NAME: ${DB_NAME}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      DB_TLS: ${DB_TLS}
       
       # Redis
       REDIS_ADDR: redis:6379
@@ -69,6 +71,23 @@ services:
       
       # JWT
       JWT_SECRET: ${JWT_SECRET}
+
+      # Pakasir
+      PAKASIR_API_KEY: ${PAKASIR_API_KEY}
+      PAKASIR_PROJECT: ${PAKASIR_PROJECT}
+      PAKASIR_BASE_URL: ${PAKASIR_BASE_URL}
+
+      # Klikpay
+      KLIKPAY_BASE_URL: ${KLIKPAY_BASE_URL}
+      KLIKPAY_CLIENT_ID: ${KLIKPAY_CLIENT_ID}
+      KLIKPAY_CLIENT_SECRET: ${KLIKPAY_CLIENT_SECRET}
+      CALLBACK_WITHDRAW: ${CALLBACK_WITHDRAW}
+      NOTIFY_URL: ${NOTIFY_URL}
+      SUCCESS_URL: ${SUCCESS_URL}
+      FAILED_URL: ${FAILED_URL}
+
+      # Cron
+      CRON_KEY: ${CRON_KEY}
       
       # S3 (if using file uploads)
       S3_ENDPOINT: ${S3_ENDPOINT}

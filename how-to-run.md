@@ -1,447 +1,486 @@
-# 🚀 Production Deployment Guide
+# 🚀 RUN VPS - StoneForm Backend & Frontend
 
-Panduan lengkap untuk deploy aplikasi vla ke VPS Ubuntu/Debian menggunakan Docker Compose.
+Dokumentasi lengkap untuk menjalankan aplikasi StoneForm di VPS Ubuntu/Debian.
 
-## 📋 Prerequisites
+## 📋 **PREREQUISITES**
 
-- VPS dengan Ubuntu 20.04+ atau Debian 11+
-- Minimal 2GB RAM, 2 CPU cores, 20GB storage
+- VPS Ubuntu 20.04+ atau Debian 11+
 - Root access atau user dengan sudo privileges
-- Domain name (opsional, untuk HTTPS)
+- Domain yang sudah di-point ke VPS (sqcapitall.space)
+- Minimal 2GB RAM, 2 CPU cores, 20GB storage
 
-## 🔧 Step 1: Setup Server
+## 🔧 **STEP 1: SETUP VPS**
 
-### Update sistem dan install dependencies
-
+### 1.1 Update System
 ```bash
-# Update package list
 sudo apt update && sudo apt upgrade -y
+```
 
-# Install required packages
-sudo apt install -y curl wget git unzip software-properties-common apt-transport-https ca-certificates gnupg lsb-release
+### 1.2 Install Dependencies
+```bash
+sudo apt install -y curl wget git nginx certbot python3-certbot-nginx
+```
 
+### 1.3 Install Docker & Docker Compose
+```bash
 # Install Docker
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Add user to docker group
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 sudo usermod -aG docker $USER
-newgrp docker
 
-# Verify installation
-docker --version
-docker compose version
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Logout dan login ulang
+exit
 ```
 
-## 📁 Step 2: Clone Repository
+## ��️ **STEP 2: SETUP BACKEND**
 
+### 2.1 Clone Repository
 ```bash
-# Clone repository
-git clone <your-repository-url>
-cd vla-backend
-
-# Atau jika menggunakan SSH
-git clone git@github.com:yourusername/vla-backend.git
-cd vla-backend
+# Clone backend
+git clone https://github.com/username/stoneform-backend.git backend
+cd backend
 ```
 
-## ⚙️ Step 3: Environment Configuration
-
-### Buat file .env
-
+### 2.2 Setup Environment Variables
 ```bash
-# Copy template environment file
-cp env.example .env
+# Copy environment template
+cp .env.example .env
 
-# Edit dengan editor favorit
+# Edit environment variables
 nano .env
 ```
 
-### Konfigurasi .env untuk production:
-
-```bash
-# Application Environment
-ENV=production
-
-# Server Configuration
-PORT=8080
-APP_PORT=8080
-
+**Isi .env:**
+```env
 # Database Configuration
 DB_HOST=db
 DB_PORT=3306
 DB_USER=vla_user
-DB_PASS=your_very_secure_db_password_here
-DB_NAME=vla_db
-DB_ROOT_PASSWORD=your_very_secure_root_password_here
-
-# JWT Configuration
-JWT_SECRET=your_very_secure_jwt_secret_key_minimum_32_characters_long
+DB_PASS=your_secure_password
+DB_NAME=vla-sf
+DB_ROOT_PASSWORD=your_root_password
+DB_TLS=false
+DB_TLS_VERIFY=false
+DB_PARAMS=charset=utf8mb4&parseTime=True&loc=Local&tls=false&timeout=10s&readTimeout=10s&writeTimeout=10s
 
 # Redis Configuration
 REDIS_ADDR=redis:6379
-REDIS_PASS=your_very_secure_redis_password_here
+REDIS_PASS=your_redis_password
 REDIS_DB=0
 
-# S3 Configuration (jika menggunakan file upload)
-S3_ENDPOINT=https://your-s3-endpoint.com
-S3_ACCESS_KEY=your_s3_access_key
-S3_SECRET_KEY=your_s3_secret_key
+# JWT Configuration
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRES_IN=24h
+JWT_REFRESH_EXPIRES_IN=168h
+
+# S3 Configuration (Optional)
+S3_ENDPOINT=https://s3.amazonaws.com
+S3_ACCESS_KEY=your_access_key
+S3_SECRET_KEY=your_secret_key
 S3_BUCKET=your_bucket_name
-S3_REGION=your_region
+S3_REGION=us-east-1
+
+# Pakasir Configuration
+PAKASIR_API_KEY=your_pakasir_api_key
+PAKASIR_PROJECT=your_project_name
+PAKASIR_BASE_URL=https://app.pakasir.com
+
+# Klikpay Configuration
+KLIKPAY_API_KEY=your_klikpay_api_key
+KLIKPAY_PROJECT=your_project_name
+KLIKPAY_BASE_URL=https://app.klikpay.com
+
+# Security Configuration
+CORS_ORIGINS=https://sqcapitall.space,https://www.sqcapitall.space
+RATE_LIMIT_REQUESTS=1000
+RATE_LIMIT_WINDOW=3600
+
+# Logging Configuration
+LOG_LEVEL=info
+LOG_FORMAT=json
+
+# Cron Configuration
+CRON_KEY=your_cron_secret_key
+
+# Application Configuration
+ENV=production
+PORT=8080
+APP_PORT=8080
 ```
 
-### Generate secure passwords:
-
+### 2.3 Start Backend Services
 ```bash
-# Generate random passwords
-openssl rand -base64 32  # Untuk JWT_SECRET
-openssl rand -base64 32  # Untuk DB_PASS
-openssl rand -base64 32  # Untuk DB_ROOT_PASSWORD
-openssl rand -base64 32  # Untuk REDIS_PASS
-```
+# Start backend dengan Docker Compose
+docker compose up -d
 
-## 🐳 Step 4: Deploy dengan Docker Compose
-
-### Deploy aplikasi tanpa Nginx (langsung expose port)
-
-```bash
-# Build dan start services
-docker compose up -d --build
-
-# Check status
+# Cek status
 docker compose ps
 
-# View logs
+# Cek logs
 docker compose logs -f
 ```
 
-### Deploy dengan Nginx reverse proxy (recommended)
-
+### 2.4 Setup Database
 ```bash
-# Deploy dengan Nginx
-docker compose --profile nginx up -d --build
+# Cek database connection
+docker exec vla-mysql mysql -u root -p$DB_ROOT_PASSWORD -e "SHOW DATABASES;"
 
-# Check status
-docker compose ps
+# Run migrations (otomatis via Docker)
+# Cek apakah tables sudah terbuat
+docker exec vla-mysql mysql -u root -p$DB_ROOT_PASSWORD -e "USE \`vla-sf\`; SHOW TABLES;"
 ```
 
-## 🔒 Step 5: Setup SSL/HTTPS (Opsional)
+## 🎨 **STEP 3: SETUP FRONTEND**
 
-### Menggunakan Let's Encrypt dengan Certbot
-
+### 3.1 Clone Frontend Repository
 ```bash
-# Install certbot
-sudo apt install -y certbot
+# Clone frontend
+git clone https://github.com/username/stoneform-frontend.git frontend
+cd frontend
+```
 
-# Stop nginx sementara
-docker compose stop nginx
+### 3.2 Install Dependencies
+```bash
+# Install Node.js (jika belum ada)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
 
-# Generate certificate
-sudo certbot certonly --standalone -d yourdomain.com
+# Install dependencies
+npm install
+```
 
-# Copy certificates ke project
-sudo mkdir -p ssl
-sudo cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem ssl/cert.pem
-sudo cp /etc/letsencrypt/live/yourdomain.com/privkey.pem ssl/key.pem
-sudo chown -R $USER:$USER ssl/
+### 3.3 Setup Environment Variables
+```bash
+# Edit .env.local
+nano .env.local
+```
+
+**Isi .env.local:**
+```env
+NEXT_PUBLIC_API_URL=https://sqcapitall.space
+NEXT_PUBLIC_APP_NAME=StoneForm
+NEXT_PUBLIC_APP_VERSION=1.0.0
+```
+
+### 3.4 Update Next.js Config
+```bash
+# Edit next.config.js
+nano next.config.js
+```
+
+**Isi next.config.js:**
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  outputFileTracingRoot: __dirname,
+  images: {
+    unoptimized: true
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+}
+
+module.exports = nextConfig
+```
+
+### 3.5 Start Frontend dengan PM2
+```bash
+# Install PM2
+sudo npm install -g pm2
+
+# Start frontend
+sudo pm2 start "npm start" --name "frontend" --cwd /home/ubuntu/frontend
+
+# Save PM2 config
+sudo pm2 save
+
+# Setup PM2 untuk auto-start
+sudo pm2 startup
+
+# Cek status
+sudo pm2 status
+```
+
+## �� **STEP 4: SETUP NGINX**
+
+### 4.1 Create Nginx Config
+```bash
+# Create nginx config
+sudo nano /etc/nginx/sites-available/sqcapitall.space
+```
+
+**Isi nginx config:**
+```nginx
+server {
+    listen 80;
+    server_name sqcapitall.space www.sqcapitall.space;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name sqcapitall.space www.sqcapitall.space;
+
+    # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/sqcapitall.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sqcapitall.space/privkey.pem;
+    
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+
+    # API routes (backend)
+    location /api/ {
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Health check endpoint
+    location /health {
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Admin routes
+    location /admin {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Frontend routes
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+### 4.2 Enable Site
+```bash
+# Enable site
+sudo ln -s /etc/nginx/sites-available/sqcapitall.space /etc/nginx/sites-enabled/
+
+# Test nginx config
+sudo nginx -t
+
+# Start nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
+```
+
+## 🔒 **STEP 5: SETUP SSL CERTIFICATE**
+
+### 5.1 Generate SSL Certificate
+```bash
+# Generate SSL certificate
+sudo certbot --nginx -d sqcapitall.space -d www.sqcapitall.space
+```
+
+### 5.2 Test SSL
+```bash
+# Test SSL
+curl https://sqcapitall.space
+curl https://sqcapitall.space/api/health
+```
+
+## ✅ **STEP 6: VERIFICATION**
+
+### 6.1 Test Backend
+```bash
+# Test API endpoints
+curl https://sqcapitall.space/api/health
+curl https://sqcapitall.space/api/payment_info
+
+# Test dengan VLA key
+curl -H "X-VLA-KEY: VLA010124" https://sqcapitall.space/api/payment_info
+```
+
+### 6.2 Test Frontend
+```bash
+# Test frontend
+curl https://sqcapitall.space
+curl https://sqcapitall.space/admin
+curl https://sqcapitall.space/admin/login
+```
+
+### 6.3 Test di Browser
+- Buka https://sqcapitall.space
+- Buka https://sqcapitall.space/admin
+- Buka https://sqcapitall.space/admin/login
+
+## �� **STEP 7: MAINTENANCE**
+
+### 7.1 Cek Status Services
+```bash
+# Cek backend
+docker compose ps
+
+# Cek frontend
+sudo pm2 status
+
+# Cek nginx
+sudo systemctl status nginx
+```
+
+### 7.2 Cek Logs
+```bash
+# Backend logs
+docker compose logs -f
+
+# Frontend logs
+sudo pm2 logs frontend
+
+# Nginx logs
+sudo tail -f /var/log/nginx/access.log
+sudo tail -f /var/log/nginx/error.log
+```
+
+### 7.3 Restart Services
+```bash
+# Restart backend
+docker compose restart
+
+# Restart frontend
+sudo pm2 restart frontend
 
 # Restart nginx
-docker compose start nginx
+sudo systemctl restart nginx
 ```
 
-### Setup auto-renewal
-
+### 7.4 Update Application
 ```bash
-# Edit crontab
-sudo crontab -e
-
-# Tambahkan baris berikut untuk auto-renewal
-0 12 * * * /usr/bin/certbot renew --quiet && docker compose restart nginx
-```
-
-## 🔄 Step 6: Setup Auto-Start
-
-### Menggunakan Docker Compose restart policy
-
-File `docker-compose.yml` sudah dikonfigurasi dengan `restart: unless-stopped`, jadi aplikasi akan otomatis restart jika server reboot.
-
-### Menggunakan systemd (opsional)
-
-```bash
-# Buat systemd service
-sudo nano /etc/systemd/system/vla.service
-```
-
-```ini
-[Unit]
-Description=vla Application
-Requires=docker.service
-After=docker.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=/path/to/your/vla-backend
-ExecStart=/usr/bin/docker compose up -d
-ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=0
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-# Enable dan start service
-sudo systemctl enable vla.service
-sudo systemctl start vla.service
-```
-
-## 📊 Step 7: Monitoring dan Maintenance
-
-### Check aplikasi status
-
-```bash
-# Check container status
-docker compose ps
-
-# Check logs
-docker compose logs -f app
-docker compose logs -f db
-docker compose logs -f redis
-
-# Check resource usage
-docker stats
-```
-
-### Health check
-
-```bash
-# Test aplikasi
-curl http://localhost:8080/health
-
-# Test dengan domain (jika sudah setup)
-curl https://yourdomain.com/health
-```
-
-### Backup database
-
-```bash
-# Buat script backup
-nano backup-db.sh
-```
-
-```bash
-#!/bin/bash
-DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/backup"
-mkdir -p $BACKUP_DIR
-
-docker compose exec -T db mysqldump -u root -p$DB_ROOT_PASSWORD $DB_NAME > $BACKUP_DIR/vla_$DATE.sql
-gzip $BACKUP_DIR/vla_$DATE.sql
-
-# Hapus backup lebih dari 7 hari
-find $BACKUP_DIR -name "vla_*.sql.gz" -mtime +7 -delete
-```
-
-```bash
-# Buat executable
-chmod +x backup-db.sh
-
-# Setup cron job untuk backup harian
-crontab -e
-# Tambahkan: 0 2 * * * /path/to/backup-db.sh
-```
-
-## 🔄 Step 8: Update Aplikasi
-
-### Zero-downtime update
-
-```bash
-# Pull perubahan terbaru
-git pull origin main
-
-# Rebuild dan restart dengan rolling update
-docker compose up -d --build --force-recreate
-
-# Atau untuk update yang lebih smooth:
-docker compose build app
-docker compose up -d app
-```
-
-### Rollback jika ada masalah
-
-```bash
-# Rollback ke commit sebelumnya
-git log --oneline
-git checkout <previous-commit-hash>
+# Update backend
+cd backend
+git pull
 docker compose up -d --build
+
+# Update frontend
+cd frontend
+git pull
+sudo pm2 restart frontend
 ```
 
-## 🛠️ Troubleshooting
+## 🚨 **TROUBLESHOOTING**
 
-### Common issues dan solusi
+### Common Issues:
 
-#### 1. Database connection error
+1. **Port 80/443 already in use**
+   ```bash
+   sudo lsof -i :80
+   sudo lsof -i :443
+   sudo systemctl stop apache2  # jika ada
+   ```
 
+2. **Database connection failed**
+   ```bash
+   docker compose logs vla-mysql
+   docker compose restart db
+   ```
+
+3. **Frontend not loading**
+   ```bash
+   sudo pm2 logs frontend
+   sudo pm2 restart frontend
+   ```
+
+4. **SSL certificate issues**
+   ```bash
+   sudo certbot certificates
+   sudo certbot renew --dry-run
+   ```
+
+## �� **MONITORING**
+
+### 7.1 Setup Monitoring
 ```bash
-# Check database logs
-docker compose logs db
+# Install htop untuk monitoring
+sudo apt install htop
 
-# Check database status
-docker compose exec db mysql -u root -p -e "SHOW DATABASES;"
+# Monitor resources
+htop
 ```
 
-#### 2. Application tidak start
-
+### 7.2 Setup Log Rotation
 ```bash
-# Check application logs
-docker compose logs app
-
-# Check environment variables
-docker compose exec app env | grep DB_
+# Setup logrotate untuk nginx
+sudo nano /etc/logrotate.d/nginx
 ```
 
-#### 3. Port sudah digunakan
+## 🔐 **SECURITY**
 
+### 8.1 Firewall Setup
 ```bash
-# Check port usage
-sudo netstat -tlnp | grep :8080
-
-# Kill process yang menggunakan port
-sudo kill -9 <PID>
-```
-
-#### 4. Out of memory
-
-```bash
-# Check memory usage
-free -h
-docker stats
-
-# Restart services
-docker compose restart
-```
-
-### Log locations
-
-- Application logs: `docker compose logs app`
-- Database logs: `docker compose logs db`
-- Redis logs: `docker compose logs redis`
-- Nginx logs: `docker compose logs nginx`
-
-## 🔐 Security Best Practices
-
-### 1. Firewall setup
-
-```bash
-# Install ufw
-sudo apt install -y ufw
-
-# Configure firewall
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow ssh
+# Setup UFW firewall
+sudo ufw allow 22
 sudo ufw allow 80
 sudo ufw allow 443
 sudo ufw enable
 ```
 
-### 2. Database security
-
-- Gunakan password yang kuat
-- Jangan expose database port ke public
-- Regular backup
-- Monitor connection logs
-
-### 3. Application security
-
-- Update dependencies secara regular
-- Monitor logs untuk suspicious activity
-- Gunakan HTTPS
-- Implement rate limiting
-
-## 📈 Performance Optimization
-
-### 1. Database optimization
-
+### 8.2 Regular Updates
 ```bash
-# Check database performance
-docker compose exec db mysql -u root -p -e "SHOW PROCESSLIST;"
+# Update system
+sudo apt update && sudo apt upgrade -y
 
-# Optimize MySQL configuration
-docker compose exec db mysql -u root -p -e "SET GLOBAL innodb_buffer_pool_size = 256M;"
-```
-
-### 2. Redis optimization
-
-```bash
-# Check Redis memory usage
-docker compose exec redis redis-cli info memory
-
-# Monitor Redis performance
-docker compose exec redis redis-cli monitor
-```
-
-### 3. Application scaling
-
-```bash
-# Scale application instances
-docker compose up -d --scale app=3
-
-# Load balancer configuration di nginx.conf
-upstream backend {
-    server app:8080;
-    server app:8080;
-    server app:8080;
-}
-```
-
-## 📞 Support
-
-Jika mengalami masalah:
-
-1. Check logs: `docker compose logs -f`
-2. Check status: `docker compose ps`
-3. Restart services: `docker compose restart`
-4. Check resource usage: `docker stats`
-
-## 🎯 Quick Commands Reference
-
-```bash
-# Start services
+# Update Docker images
+docker compose pull
 docker compose up -d
-
-# Stop services
-docker compose down
-
-# Restart services
-docker compose restart
-
-# View logs
-docker compose logs -f
-
-# Check status
-docker compose ps
-
-# Update application
-git pull && docker compose up -d --build
-
-# Backup database
-docker compose exec db mysqldump -u root -p$DB_ROOT_PASSWORD $DB_NAME > backup.sql
-
-# Access database
-docker compose exec db mysql -u root -p
-
-# Access Redis
-docker compose exec redis redis-cli
-
-# Check health
-curl http://localhost:8080/health
 ```
+
+## 📝 **NOTES**
+
+- Pastikan domain sudah di-point ke VPS sebelum setup SSL
+- Backup database secara berkala
+- Monitor disk space dan memory usage
+- Update dependencies secara berkala
+- Test aplikasi setelah setiap update
+
+## 🆘 **SUPPORT**
+
+Jika ada masalah, cek:
+1. Logs aplikasi
+2. Status services
+3. Network connectivity
+4. SSL certificate validity
+5. Database connection
 
 ---
 
-**Selamat! Aplikasi vla sudah berjalan di production! 🎉**
+**Happy Deploying! 🚀**
