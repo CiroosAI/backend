@@ -175,7 +175,7 @@ docker compose logs -f app
 docker exec backend-mysql-1 mysql -u root -p${DB_ROOT_PASSWORD} -e "SHOW DATABASES;"
 
 ##Create migration table
-Get-Content .\database\db.sql | docker exec -i vla-mysql mysql -u root -pvlaroot vla-sf
+docker exec -i vla-mysql mysql -u root -pvlaroot vla-sf < ./database/db.sql
 
 # Verify tables
 docker exec backend-mysql-1 mysql -u root -p${DB_ROOT_PASSWORD} ${DB_NAME} -e "SHOW TABLES;"
@@ -364,24 +364,20 @@ server {
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
     add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
     
-    # CORS Headers
-    add_header Access-Control-Allow-Origin "https://web.com" always;
-    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
-    add_header Access-Control-Allow-Headers "Accept, Authorization, Cache-Control, Content-Type, DNT, If-Modified-Since, Keep-Alive, Origin, User-Agent, X-Requested-With" always;
-    
     # Handle preflight requests
-    if ($request_method = 'OPTIONS') {
-        add_header Access-Control-Allow-Origin "https://web.com";
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
-        add_header Access-Control-Allow-Headers "Accept, Authorization, Cache-Control, Content-Type, DNT, If-Modified-Since, Keep-Alive, Origin, User-Agent, X-Requested-With";
-        add_header Access-Control-Max-Age 1728000;
-        add_header Content-Type "text/plain; charset=utf-8";
-        add_header Content-Length 0;
-        return 204;
-    }
-    
-    # Proxy to Go backend
     location / {
+        # Handle OPTIONS requests first
+        if ($request_method = 'OPTIONS') {
+            add_header Access-Control-Allow-Origin "https://web.com";
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+            add_header Access-Control-Allow-Headers "Accept, Authorization, Cache-Control, Content-Type, DNT, If-Modified-Since, Keep-Alive, Origin, User-Agent, X-Requested-With";
+            add_header Access-Control-Max-Age 1728000;
+            add_header Content-Type "text/plain; charset=utf-8";
+            add_header Content-Length 0;
+            return 204;
+        }
+        
+        # Proxy to Go backend
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
