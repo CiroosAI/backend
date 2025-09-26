@@ -128,6 +128,7 @@ docker compose logs -f
 ```bash
 # Cek database connection
 docker exec vla-mysql mysql -u root -p$DB_ROOT_PASSWORD -e "SHOW DATABASES;"
+Get-Content .\database\db.sql | docker exec -i vla-mysql mysql -u root -pvlaroot vla-sf
 
 # Run migrations (otomatis via Docker)
 # Cek apakah tables sudah terbuat

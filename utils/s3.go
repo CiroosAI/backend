@@ -23,7 +23,7 @@ func UploadToS3(objectName string, file io.Reader, fileSize int64) error {
 	secretKey := os.Getenv("S3_SECRET_KEY")
 	bucket := os.Getenv("S3_BUCKET")
 	if bucket == "" {
-		bucket = "sf-forums"
+		bucket = "forums"
 	}
 
 	if endpoint == "" || accessKey == "" || secretKey == "" {

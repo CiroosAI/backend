@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Waktu pembuatan: 18 Sep 2025 pada 23.08
+-- Waktu pembuatan: 26 Sep 2025 pada 12.14
 -- Versi server: 8.4.3
 -- Versi PHP: 8.3.16
 
@@ -44,7 +44,7 @@ CREATE TABLE `admins` (
 --
 
 INSERT INTO `admins` (`id`, `username`, `password`, `name`, `email`, `role`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 'raju', '$2y$10$I4qWolurBpmNKJlQUqb6CeBASh/8Sv59gWu6Ys.m9UsXPLdRLm0du', 'Raju', 'raju@gmail.com', 'admin', 1, '2025-09-17 13:39:57.000', '2025-09-17 13:39:57.000');
+(1, 'admin', '$2y$10$I4qWolurBpmNKJlQUqb6CeBASh/8Sv59gWu6Ys.m9UsXPLdRLm0du', 'Admin', 'admin@vladevs.com', 'admin', 1, '2000-01-01 00:00:00.000', '2000-01-01 00:00:00.000');
 
 -- --------------------------------------------------------
 
@@ -73,8 +73,7 @@ INSERT INTO `banks` (`id`, `name`, `code`, `status`) VALUES
 (7, 'Dana', 'DANA', 'Active'),
 (8, 'GoPay', 'GOPAY', 'Active'),
 (9, 'OVO', 'OVO', 'Active'),
-(10, 'ShopeePay', 'SHOPEEPAY', 'Active'),
-(12, 'Bank Central Asia', 'BCAID', 'Active');
+(10, 'ShopeePay', 'SHOPEEPAY', 'Active');
 
 -- --------------------------------------------------------
 
@@ -125,8 +124,8 @@ CREATE TABLE `investments` (
   `total_returned` decimal(15,2) NOT NULL DEFAULT '0.00',
   `last_return_at` datetime DEFAULT NULL,
   `next_return_at` datetime DEFAULT NULL,
-  `order_id` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `status` enum('Pending','Running','Completed','Suspended','Cancelled') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Pending',
+  `order_id` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` enum('Pending','Running','Completed','Suspended','Cancelled') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Pending',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -155,17 +154,45 @@ CREATE TABLE `payments` (
 -- --------------------------------------------------------
 
 --
+-- Struktur dari tabel `payment_settings`
+--
+
+CREATE TABLE `payment_settings` (
+  `id` bigint UNSIGNED NOT NULL,
+  `pakasir_api_key` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `pakasir_project` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `deposit_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `bank_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `bank_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `account_number` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `account_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `withdraw_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `wishlist_id` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data untuk tabel `payment_settings`
+--
+
+INSERT INTO `payment_settings` (`id`, `pakasir_api_key`, `pakasir_project`, `deposit_amount`, `bank_name`, `bank_code`, `account_number`, `account_name`, `withdraw_amount`, `wishlist_id`, `created_at`, `updated_at`) VALUES
+(1, 'AWD1A2AWD132', 'AWD1SAD2A1W', 10000.00, 'Bank BCA', 'BCA', '1234567890', 'StoneForm Admin', 50000.00, '1', '2025-09-26 12:13:38', '2025-09-26 12:13:38');
+
+-- --------------------------------------------------------
+
+--
 -- Struktur dari tabel `products`
 --
 
 CREATE TABLE `products` (
   `id` int UNSIGNED NOT NULL,
-  `name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `minimum` decimal(15,2) NOT NULL,
   `maximum` decimal(15,2) NOT NULL,
   `percentage` decimal(5,2) NOT NULL,
   `duration` int NOT NULL,
-  `status` enum('Active','Inactive') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Active',
+  `status` enum('Active','Inactive') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Active',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -196,6 +223,17 @@ CREATE TABLE `refresh_tokens` (
 -- --------------------------------------------------------
 
 --
+-- Struktur dari tabel `revoked_tokens`
+--
+
+CREATE TABLE `revoked_tokens` (
+  `id` varchar(128) NOT NULL,
+  `revoked_at` datetime NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Struktur dari tabel `settings`
 --
 
@@ -206,6 +244,8 @@ CREATE TABLE `settings` (
   `min_withdraw` decimal(15,2) NOT NULL,
   `max_withdraw` decimal(15,2) NOT NULL,
   `withdraw_charge` decimal(15,2) NOT NULL,
+  `maintenance` BOOLEAN NOT NULL DEFAULT FALSE,
+  `closed_register` BOOLEAN NOT NULL DEFAULT FALSE,
   `link_cs` text NOT NULL,
   `link_group` text NOT NULL,
   `link_app` text NOT NULL
@@ -216,7 +256,7 @@ CREATE TABLE `settings` (
 --
 
 INSERT INTO `settings` (`id`, `name`, `logo`, `min_withdraw`, `max_withdraw`, `withdraw_charge`, `link_cs`, `link_group`, `link_app`) VALUES
-(1, 'Stone Form', 'logo.png', 33000.00, 10000000.00, 10.00, 'https://t.me/', 'https://t.me/', 'https://stoneform.id');
+(1, 'Vla Devs', 'logo.png', 33000.00, 10000000.00, 10.00, 'https://t.me/', 'https://t.me/', 'https://vladevs.com');
 
 -- --------------------------------------------------------
 
@@ -294,11 +334,7 @@ INSERT INTO `tasks` (`id`, `name`, `reward`, `required_level`, `required_active_
 (7, 'Tugas Perekrutan 7', 6000000.00, 1, 1000, 'Active', '2025-09-08 03:56:19', '2025-09-08 03:56:19'),
 (8, 'Tugas Perekrutan 8', 16000000.00, 1, 2000, 'Active', '2025-09-08 03:57:01', '2025-09-08 04:00:03'),
 (9, 'Tugas Perekrutan 9', 35000000.00, 1, 3000, 'Active', '2025-09-08 03:56:19', '2025-09-08 03:56:19'),
-(10, 'Tugas Perekrutan 10', 80000000.00, 1, 5000, 'Active', '2025-09-08 03:57:01', '2025-09-08 03:57:01'),
-(11, 'Tugas Perekrutan 11', 100000000.00, 1, 10000, 'Active', '2025-09-18 12:27:56', '2025-09-18 12:31:31'),
-(12, 'Tugas Perekrutan 11', 100000000.00, 1, 10000, 'Active', '2025-09-18 12:29:23', '2025-09-18 12:31:35'),
-(13, 'Tugas Perekrutan 11', 100000000.00, 1, 10000, 'Active', '2025-09-18 12:30:31', '2025-09-18 12:30:31'),
-(14, 'Tugas Perekrutan 11', 100000000.00, 2, 10000, 'Active', '2025-09-18 12:30:50', '2025-09-18 12:30:50');
+(10, 'Tugas Perekrutan 10', 80000000.00, 1, 5000, 'Active', '2025-09-08 03:57:01', '2025-09-08 03:57:01');
 
 -- --------------------------------------------------------
 
@@ -338,7 +374,7 @@ CREATE TABLE `users` (
   `total_invest` decimal(15,2) DEFAULT '0.00',
   `spin_ticket` bigint DEFAULT '0',
   `status` enum('Active','Inactive','Suspend') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
-  `investment_status` enum('Active','Inactive') COLLATE utf8mb4_unicode_ci DEFAULT 'Inactive',
+  `investment_status` enum('Active','Inactive') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'Inactive',
   `created_at` datetime(3) DEFAULT NULL,
   `updated_at` datetime(3) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -348,16 +384,22 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `name`, `number`, `password`, `reff_code`, `reff_by`, `balance`, `level`, `total_invest`, `spin_ticket`, `status`, `investment_status`, `created_at`, `updated_at`) VALUES
-(1, 'John Updated', '812345678910', '$2a$10$XMKpm/W21ddcGnacVYaqLOV7daNuSjrMpvk8fz8MpK50jeLIZv7fa', '5BGHRL5P', 2, 2000.00, 5, 1000.00, 0, 'Active', 'Inactive', '2025-08-28 03:24:03.179', '2025-09-17 15:55:45.555'),
-(2, 'Ref Test', '81200000003', '$2a$10$QOpusBqT2Ymxoe/4qUS4Ou7jZfBdMvMaL5GLJRBBiXZ7F9MDK7S86', 'FA60WFR6', 5, 0.00, 0, 1000.00, 0, 'Active', 'Active', '2025-08-28 03:25:49.793', '2025-08-28 03:25:49.793'),
-(3, 'Ref Test', '812000000003', '$2a$10$EDrJBAcjQ8iec3n8Ikm8U.JPQytEud9B8ertiTLS8tF3kvfrDjhPm', 'CQARKX2R', 5, 0.00, 0, 1000.00, 0, 'Active', 'Active', '2025-08-31 02:07:11.822', '2025-08-31 02:07:11.822'),
-(4, 'John Doe', '812000000011', '$2a$10$Obc.TF4uWsmbeGcfaPsVu./jhJf5yTKqGi.o2GAgMRneheeUhRyFu', 'VR1NVXRR', 5, 2000.00, 0, 1000.00, 10, 'Active', 'Active', '2025-09-07 01:01:34.258', '2025-09-11 21:19:31.281'),
-(5, 'test', '8123456789', '$2a$10$GsmmRxq4NNtDjtXGQRsYfuDGPuoxJTUkK7nkUoWZsupfEH.xGbZCG', 'TXD0QOAU', NULL, 50000.00, 0, 1000.00, 98, 'Active', 'Active', '2025-09-07 05:40:17.989', '2025-09-18 10:47:45.232'),
-(6, 'tests', '81234567892', '$2a$10$XmiFKusWuDnyiy1AYEGiwuYiVHl9A73id2xIAF0Oq0zyMe35IflOSd', 'TXD0QOAUdwa', 5, 0.00, 0, 1000.00, 0, 'Active', 'Active', '2025-09-07 05:40:17.989', '2025-09-07 05:40:17.989'),
-(7, 'Raju Testing', '81234567891', '$2a$10$wLZaadBuA9eeAOZejK72yesX9DBIj6MEt5QYHPOuQGwauIZaJJsba', 'S2BY9GHM', 5, 0.00, 0, 1000.00, 0, 'Active', 'Active', '2025-09-08 05:48:47.615', '2025-09-08 05:48:47.615'),
-(8, 'Raju Syahputra', '81289425750', '$2a$10$zD2zZjkVe7eGv7GcyK2zfOkQYW95OnjrCWt2Bb1dFZBPJl37UvKmi', 'ASBRJROE', NULL, 2000.00, 0, 0.00, 0, 'Active', 'Inactive', '2025-09-13 22:20:56.620', '2025-09-13 22:20:56.620'),
-(9, 'NUR ALIAH', '81234567899', '$2a$10$4radhSxspGcK6YtNzlQ/TOR0A0WlzSGfw6b9pXTMwhl0gpF8YAfVe', 'NINYG2O9', NULL, 2000.00, 0, 0.00, 0, 'Active', 'Inactive', '2025-09-15 18:47:42.327', '2025-09-15 18:47:42.327'),
-(10, 'ad1', '81356987456', '$2a$10$nEvgIbq8dopA3tEbJksc/.jP94BdlfdYr5zbrGqhbPrfYI9wFB2ye', 'B0WW5MIA', NULL, 2000.00, 0, 0.00, 0, 'Active', 'Inactive', '2025-09-15 19:40:50.226', '2025-09-15 19:40:50.226');
+(1, 'VLA Users', '8123456789', '$2y$10$fa5X/6ZfpaNZsa07TyzO3ukL/AtxtGLv.6erFIw9KmXFNYyFbE656', 'VLAREFF', 0, 2000.00, 5, 1000.00, 100, 'Active', 'Active', '2025-01-01 00:00:00.000', '2025-01-01 00:00:00.000');
+
+-- --------------------------------------------------------
+
+--
+-- Struktur dari tabel `user_spins`
+--
+
+CREATE TABLE `user_spins` (
+  `id` int UNSIGNED NOT NULL,
+  `user_id` int NOT NULL,
+  `prize_id` int UNSIGNED NOT NULL COMMENT 'Reference to won prize',
+  `amount` decimal(15,2) NOT NULL COMMENT 'Amount yang dimenangkan',
+  `code` VARCHAR(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Code hadiah yang dimenangkan',
+  `won_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='User spin wheel history and claims';
 
 -- --------------------------------------------------------
 
@@ -467,6 +509,12 @@ ALTER TABLE `payments`
   ADD UNIQUE KEY `order_id` (`order_id`);
 
 --
+-- Indeks untuk tabel `payment_settings`
+--
+ALTER TABLE `payment_settings`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indeks untuk tabel `products`
 --
 ALTER TABLE `products`
@@ -481,6 +529,12 @@ ALTER TABLE `refresh_tokens`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_refresh_user` (`user_id`),
   ADD KEY `idx_refresh_tokens_user_id` (`user_id`);
+
+--
+-- Indeks untuk tabel `revoked_tokens`
+--
+ALTER TABLE `revoked_tokens`
+  ADD PRIMARY KEY (`id`);
 
 --
 -- Indeks untuk tabel `settings`
@@ -528,6 +582,14 @@ ALTER TABLE `users`
   ADD UNIQUE KEY `idx_users_number` (`number`),
   ADD UNIQUE KEY `idx_users_reff_code` (`reff_code`),
   ADD KEY `idx_users_reff_by` (`reff_by`);
+
+--
+-- Indeks untuk tabel `user_spins`
+--
+ALTER TABLE `user_spins`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_user_id` (`user_id`),
+  ADD KEY `idx_won_at` (`won_at`);
 
 --
 -- Indeks untuk tabel `user_tasks`
@@ -590,6 +652,12 @@ ALTER TABLE `payments`
   MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT untuk tabel `payment_settings`
+--
+ALTER TABLE `payment_settings`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
 -- AUTO_INCREMENT untuk tabel `products`
 --
 ALTER TABLE `products`
@@ -624,6 +692,12 @@ ALTER TABLE `transactions`
 --
 ALTER TABLE `users`
   MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+
+--
+-- AUTO_INCREMENT untuk tabel `user_spins`
+--
+ALTER TABLE `user_spins`
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT untuk tabel `user_tasks`
@@ -675,6 +749,13 @@ ALTER TABLE `investments`
 --
 ALTER TABLE `transactions`
   ADD CONSTRAINT `fk_transactions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Ketidakleluasaan untuk tabel `user_spins`
+--
+ALTER TABLE `user_spins`
+  ADD CONSTRAINT `fk_spins_prize` FOREIGN KEY (`prize_id`) REFERENCES `spin_prizes` (`id`) ON DELETE RESTRICT,
+  ADD CONSTRAINT `fk_user_spins_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
 --
 -- Ketidakleluasaan untuk tabel `user_tasks`

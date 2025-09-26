@@ -193,7 +193,7 @@ func UserSpinHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user and check spin_ticket
 	var user models.User
 	if err := db.Select("id, balance, spin_ticket").Where("id = ?", userID).First(&user).Error; err != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan sistem, silakan coba lagi"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan data, silakan coba lagi"})
 		log.Println(err)
 		return
 	}
@@ -292,7 +292,7 @@ func UserSpinHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan sistem, silakan coba lagi"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan server, silakan coba lagi"})
 		log.Println(err)
 		return
 	}
