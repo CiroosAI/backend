@@ -2,6 +2,7 @@ package users
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"time"
@@ -193,6 +194,7 @@ func UserSpinHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	if err := db.Select("id, balance, spin_ticket").Where("id = ?", userID).First(&user).Error; err != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan sistem, silakan coba lagi"})
+		log.Println(err)
 		return
 	}
 	if user.SpinTicket == nil || *user.SpinTicket == 0 {
@@ -258,6 +260,7 @@ func UserSpinHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := tx.Create(&trx).Error; err != nil {
 			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan sistem, silakan coba lagi"})
+			log.Println(err)
 			return err
 		}
 
@@ -290,6 +293,7 @@ func UserSpinHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan sistem, silakan coba lagi"})
+		log.Println(err)
 		return
 	}
 
