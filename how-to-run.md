@@ -71,6 +71,9 @@ sudo npm install -g pm2
 
 ### 3.1 Generate SSL untuk kedua domain
 ```bash
+# Stop nginx
+sudo systemctl stop nginx
+sudo systemctl disable nginx
 # Generate SSL certificate untuk main domain
 sudo certbot certonly --standalone -d web.com -d www.web.com
 
@@ -88,6 +91,10 @@ sudo certbot renew --dry-run
 
 # Auto renewal sudah otomatis via systemd timer
 sudo systemctl status certbot.timer
+
+# Enable nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
 ```
 
 ## ⚙️ **STEP 4: SETUP BACKEND (Go + Docker)**
