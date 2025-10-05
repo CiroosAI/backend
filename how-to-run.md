@@ -182,7 +182,7 @@ docker compose logs -f app
 docker exec backend-mysql-1 mysql -u root -p${DB_ROOT_PASSWORD} -e "SHOW DATABASES;"
 
 ##Create migration table
-docker exec -i vla-mysql mysql -u root -pvlaroot vla-sf < ./database/db.sql
+docker exec -i vla-mysql mysql -u root -pvlaroot vla-ciroos < ./database/db.sql
 
 # Verify tables
 docker exec backend-mysql-1 mysql -u root -p${DB_ROOT_PASSWORD} ${DB_NAME} -e "SHOW TABLES;"
