@@ -13,7 +13,7 @@ func InfoPublicHandler(w http.ResponseWriter, r *http.Request) {
 
 	var setting models.Setting
 	if err := db.Model(&models.Setting{}).
-		Select("name, maintenance, closed_register").
+		Select("name, company, maintenance, closed_register").
 		Take(&setting).Error; err != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
 			Success: false,
@@ -27,6 +27,7 @@ func InfoPublicHandler(w http.ResponseWriter, r *http.Request) {
 		Message: "Successfully",
 		Data: map[string]interface{}{
 			"name":            setting.Name,
+			"company":         setting.Company,
 			"maintenance":     setting.Maintenance,
 			"closed_register": setting.ClosedRegister,
 		},

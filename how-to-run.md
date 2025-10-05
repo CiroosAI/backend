@@ -208,8 +208,11 @@ npm install
 
 ### 5.3 Setup Environment Variables
 ```bash
+#Copy .env.example to .env
+cp .env.example .env
+
 # Create environment file
-nano .env.local
+nano .env
 ```
 
 **Isi .env.local:**

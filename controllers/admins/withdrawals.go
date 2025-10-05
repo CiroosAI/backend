@@ -197,22 +197,22 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 	notifyURL := os.Getenv("CALLBACK_WITHDRAW")
 
 	// 1) Get access token
-	clientID := os.Getenv("KLIKPAY_CLIENT_ID")
-	clientSecret := os.Getenv("KLIKPAY_CLIENT_SECRET")
+	clientID := os.Getenv("KYTAPAY_CLIENT_ID")
+	clientSecret := os.Getenv("KYTAPAY_CLIENT_SECRET")
 	if clientID == "" || clientSecret == "" {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Klikpay credentials missing"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "KYTAPAY credentials missing"})
 		return
 	}
 	basic := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + clientSecret))
 	atkReqBody := map[string]string{"grant_type": "client_credentials"}
 	atkJSON, _ := json.Marshal(atkReqBody)
-	req, _ := http.NewRequest(http.MethodPost, "https://api.klikpay.id/v1/access-token", bytes.NewReader(atkJSON))
+	req, _ := http.NewRequest(http.MethodPost, "https://api.kytapay.com/v2/access-token", bytes.NewReader(atkJSON))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Basic "+basic)
 	resp, err := client.Do(req)
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Klikpay token request failed"})
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY token request failed"})
 		return
 	}
 	defer resp.Body.Close()
@@ -226,7 +226,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		} `json:"response_data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&atkResp); err != nil || atkResp.ResponseData.AccessToken == "" {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Klikpay token parse failed"})
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY token parse failed"})
 		return
 	}
 
@@ -243,12 +243,12 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		"notify_url": notifyURL,
 	}
 	payoutJSON, _ := json.Marshal(payoutBody)
-	req2, _ := http.NewRequest(http.MethodPost, "https://api.klikpay.id/v1/payouts/transfers", bytes.NewReader(payoutJSON))
+	req2, _ := http.NewRequest(http.MethodPost, "https://api.kytapay.com/v2/payouts/transfers", bytes.NewReader(payoutJSON))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Authorization", "Bearer "+atkResp.ResponseData.AccessToken)
 	resp2, err := client.Do(req2)
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Klikpay payout request failed"})
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY payout request failed"})
 		return
 	}
 	defer resp2.Body.Close()
@@ -257,7 +257,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		ResponseMessage string `json:"response_message"`
 	}
 	if err := json.NewDecoder(resp2.Body).Decode(&payoutResp); err != nil {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Klikpay payout parse failed"})
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY payout parse failed"})
 		return
 	}
 	// Accept 2xx-ish codes starting with 200

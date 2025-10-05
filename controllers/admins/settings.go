@@ -10,6 +10,7 @@ import (
 
 type SettingRequest struct {
 	Name           string  `json:"name"`
+	Company        string  `json:"company"`
 	Logo           string  `json:"logo"`
 	MinWithdraw    float64 `json:"min_withdraw"`
 	MaxWithdraw    float64 `json:"max_withdraw"`
@@ -37,6 +38,7 @@ func GetSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	// Transform to response format
 	response := map[string]interface{}{
 		"name":            setting.Name,
+		"company":         setting.Company,
 		"logo":            setting.Logo,
 		"min_withdraw":    setting.MinWithdraw,
 		"max_withdraw":    setting.MaxWithdraw,
@@ -80,6 +82,7 @@ func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Update settings
 	setting.Name = req.Name
+	setting.Company = req.Company
 	setting.Logo = req.Logo
 	setting.MinWithdraw = req.MinWithdraw
 	setting.MaxWithdraw = req.MaxWithdraw
@@ -101,6 +104,7 @@ func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	// Transform to response format
 	response := map[string]interface{}{
 		"name":            setting.Name,
+		"company":         setting.Company,
 		"logo":            setting.Logo,
 		"min_withdraw":    setting.MinWithdraw,
 		"max_withdraw":    setting.MaxWithdraw,

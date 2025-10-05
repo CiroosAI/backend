@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Waktu pembuatan: 26 Sep 2025 pada 12.14
+-- Waktu pembuatan: 05 Okt 2025 pada 01.34
 -- Versi server: 8.4.3
 -- Versi PHP: 8.3.16
 
@@ -159,15 +159,15 @@ CREATE TABLE `payments` (
 
 CREATE TABLE `payment_settings` (
   `id` bigint UNSIGNED NOT NULL,
-  `pakasir_api_key` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `pakasir_project` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `pakasir_api_key` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `pakasir_project` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `deposit_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
-  `bank_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `bank_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `account_number` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `account_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `bank_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `bank_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `account_number` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `account_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `withdraw_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
-  `wishlist_id` text COLLATE utf8mb4_unicode_ci,
+  `wishlist_id` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -240,12 +240,13 @@ CREATE TABLE `revoked_tokens` (
 CREATE TABLE `settings` (
   `id` bigint UNSIGNED NOT NULL,
   `name` text NOT NULL,
+  `company` text NOT NULL,
   `logo` text NOT NULL,
   `min_withdraw` decimal(15,2) NOT NULL,
   `max_withdraw` decimal(15,2) NOT NULL,
   `withdraw_charge` decimal(15,2) NOT NULL,
-  `maintenance` BOOLEAN NOT NULL DEFAULT FALSE,
-  `closed_register` BOOLEAN NOT NULL DEFAULT FALSE,
+  `maintenance` tinyint(1) NOT NULL DEFAULT '0',
+  `closed_register` tinyint(1) NOT NULL DEFAULT '0',
   `link_cs` text NOT NULL,
   `link_group` text NOT NULL,
   `link_app` text NOT NULL
@@ -255,8 +256,8 @@ CREATE TABLE `settings` (
 -- Dumping data untuk tabel `settings`
 --
 
-INSERT INTO `settings` (`id`, `name`, `logo`, `min_withdraw`, `max_withdraw`, `withdraw_charge`, `link_cs`, `link_group`, `link_app`) VALUES
-(1, 'Vla Devs', 'logo.png', 33000.00, 10000000.00, 10.00, 'https://t.me/', 'https://t.me/', 'https://vladevs.com');
+INSERT INTO `settings` (`id`, `name`, `company`, `logo`, `min_withdraw`, `max_withdraw`, `withdraw_charge`, `maintenance`, `closed_register`, `link_cs`, `link_group`, `link_app`) VALUES
+(1, 'Vla Devs', 'Vla Devs', 'logo.png', 33000.00, 10000000.00, 10.00, 0, 0, 'https://t.me/', 'https://t.me/', 'https://vladevs.com');
 
 -- --------------------------------------------------------
 
@@ -295,11 +296,11 @@ INSERT INTO `spin_prizes` (`id`, `amount`, `code`, `chance_weight`, `status`, `c
 -- (Lihat di bawah untuk tampilan aktual)
 --
 CREATE TABLE `spin_prizes_with_percentage` (
-`id` int unsigned
-,`amount` decimal(15,2)
-,`code` varchar(20)
-,`chance_weight` int
+`amount` decimal(15,2)
 ,`chance_percentage` decimal(16,2)
+,`chance_weight` int
+,`code` varchar(20)
+,`id` int unsigned
 ,`status` enum('Active','Inactive')
 );
 
@@ -397,7 +398,7 @@ CREATE TABLE `user_spins` (
   `user_id` int NOT NULL,
   `prize_id` int UNSIGNED NOT NULL COMMENT 'Reference to won prize',
   `amount` decimal(15,2) NOT NULL COMMENT 'Amount yang dimenangkan',
-  `code` VARCHAR(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Code hadiah yang dimenangkan',
+  `code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Code hadiah yang dimenangkan',
   `won_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='User spin wheel history and claims';
 
@@ -589,7 +590,8 @@ ALTER TABLE `users`
 ALTER TABLE `user_spins`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_user_id` (`user_id`),
-  ADD KEY `idx_won_at` (`won_at`);
+  ADD KEY `idx_won_at` (`won_at`),
+  ADD KEY `fk_spins_prize` (`prize_id`);
 
 --
 -- Indeks untuk tabel `user_tasks`

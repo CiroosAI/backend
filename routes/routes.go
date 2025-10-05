@@ -45,8 +45,6 @@ func InitRouter() *mux.Router {
 
 	// Kytapay webhook (no auth, whitelist, sliding window)
 	api.Handle("/payments/kyta/webhook", webhookLimiter.Middleware(http.HandlerFunc(users.KytaWebhookHandler))).Methods(http.MethodPost)
-	// Pakasir webhook
-	api.Handle("/payments/pakasir/webhook", webhookLimiter.Middleware(http.HandlerFunc(users.PakasirWebhookHandler))).Methods(http.MethodPost)
 
 	// Example protected endpoint using JWT middleware
 	api.Handle("/ping", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
