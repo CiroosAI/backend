@@ -234,9 +234,9 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 	payoutBody := map[string]interface{}{
 		"reference_id": withdrawal.OrderID,
 		"amount":       int64(withdrawal.FinalAmount),
-		"bank_code":    bankCode,
 		"description":  description,
 		"destination": map[string]interface{}{
+			"code":    bankCode,
 			"account_number": accountNumber,
 			"account_name":   accountName,
 		},
