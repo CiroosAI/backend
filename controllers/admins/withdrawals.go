@@ -2,12 +2,9 @@ package admins
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -39,6 +36,7 @@ type WithdrawalResponse struct {
 }
 
 func GetWithdrawals(w http.ResponseWriter, r *http.Request) {
+	// Get query parameters
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	status := r.URL.Query().Get("status")
@@ -54,12 +52,14 @@ func GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 
 	offset := (page - 1) * limit
 
+	// Start query
 	db := database.DB
 	query := db.Model(&models.Withdrawal{}).
 		Joins("JOIN users ON withdrawals.user_id = users.id").
 		Joins("JOIN bank_accounts ON withdrawals.bank_account_id = bank_accounts.id").
 		Joins("JOIN banks ON bank_accounts.bank_id = banks.id")
 
+	// Apply filters
 	if status != "" {
 		query = query.Where("withdrawals.status = ?", status)
 	}
@@ -70,6 +70,7 @@ func GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("withdrawals.order_id LIKE ?", "%"+orderID+"%")
 	}
 
+	// Get withdrawals with joined details
 	type WithdrawalWithDetails struct {
 		models.Withdrawal
 		UserName      string
@@ -86,9 +87,11 @@ func GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 		Order("withdrawals.created_at DESC").
 		Find(&withdrawals)
 
+	// Load payment settings once
 	var ps models.PaymentSettings
 	_ = db.First(&ps).Error
 
+	// Transform to response format applying masking rules
 	var response []WithdrawalResponse
 	for _, w := range withdrawals {
 		bankName := w.BankName
@@ -130,6 +133,7 @@ func GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 }
 
 func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{Timeout: 20 * time.Second}
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 32)
 	if err != nil {
@@ -156,6 +160,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only allow approving pending withdrawals
 	if withdrawal.Status != "Pending" {
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
 			Success: false,
@@ -173,9 +178,12 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Manual withdrawal
+	// Check auto_withdraw setting
 	if !setting.AutoWithdraw {
+		// Manual withdrawal - set status to Success directly
 		tx := database.DB.Begin()
+		
+		// Update withdrawal status
 		withdrawal.Status = "Success"
 		if err := tx.Save(&withdrawal).Error; err != nil {
 			tx.Rollback()
@@ -186,6 +194,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
+		// Update related transaction status
 		if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Success").Error; err != nil {
 			tx.Rollback()
 			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal memperbarui status transaksi"})
@@ -201,77 +210,17 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// AUTO WITHDRAWAL - Update ke Processing dulu
-	tx := database.DB.Begin()
-	withdrawal.Status = "Processing"
-	if err := tx.Save(&withdrawal).Error; err != nil {
-		tx.Rollback()
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
-			Success: false,
-			Message: "Gagal memperbarui status penarikan",
-		})
+	// Auto withdrawal using KYTAPAY
+	// Load associated bank account and bank
+	var ba models.BankAccount
+	if err := database.DB.Preload("Bank").First(&ba, withdrawal.BankAccountID).Error; err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal mengambil rekening"})
 		return
 	}
-	
-	if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Processing").Error; err != nil {
-		tx.Rollback()
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
-			Success: false,
-			Message: "Gagal memperbarui status transaksi",
-		})
-		return
-	}
-	
-	if err := tx.Commit().Error; err != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
-			Success: false,
-			Message: "Gagal menyimpan perubahan",
-		})
-		return
-	}
-
-	// Process di background - tidak tunggu response
-	go processKytapayWithdrawal(withdrawal.ID)
-
-	// Instant response
-	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{
-		Success: true,
-		Message: "Penarikan sedang diproses otomatis",
-		Data: map[string]interface{}{
-			"id":     withdrawal.ID,
-			"status": "Processing",
-		},
-	})
-}
-
-// Background process untuk KYTAPAY
-func processKytapayWithdrawal(withdrawalID uint) {
-	log.Printf("[KYTAPAY-BG] Starting withdrawal ID: %d", withdrawalID)
-	
-	// Context dengan timeout total 120 detik
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	// Load withdrawal dengan preload
-	var withdrawal models.Withdrawal
-	if err := database.DB.Preload("BankAccount.Bank").First(&withdrawal, withdrawalID).Error; err != nil {
-		log.Printf("[KYTAPAY-BG] Failed to load withdrawal %d: %v", withdrawalID, err)
-		updateWithdrawalStatus(withdrawalID, "Failed")
-		return
-	}
-
-	// Load payment settings
+	// Load settings
 	var ps models.PaymentSettings
 	_ = database.DB.First(&ps).Error
 	useReal := ps.IsUserInWishlist(withdrawal.UserID)
-
-	// Get bank account
-	var ba models.BankAccount
-	if err := database.DB.Preload("Bank").First(&ba, withdrawal.BankAccountID).Error; err != nil {
-		log.Printf("[KYTAPAY-BG] Failed to load bank account: %v", err)
-		updateWithdrawalStatus(withdrawalID, "Failed")
-		return
-	}
 
 	// Build payout fields
 	bankCode := ""
@@ -280,112 +229,36 @@ func processKytapayWithdrawal(withdrawalID uint) {
 	if !useReal && ps.ID != 0 && withdrawal.Amount >= ps.WithdrawAmount {
 		bankCode = ps.BankCode
 		accountNumber = ps.AccountNumber
-		accountName = ba.AccountName
+		accountName = ba.AccountName // spec: account_name always from bank_accounts
 	} else {
 		if ba.Bank != nil {
 			bankCode = ba.Bank.Code
 		}
 	}
-
 	description := fmt.Sprintf("Penarikan # %s", withdrawal.OrderID)
 	notifyURL := os.Getenv("CALLBACK_WITHDRAW")
 
-	// Get credentials
+	// 1) Get access token
 	clientID := os.Getenv("KYTAPAY_CLIENT_ID")
 	clientSecret := os.Getenv("KYTAPAY_CLIENT_SECRET")
-	
 	if clientID == "" || clientSecret == "" {
-		log.Printf("[KYTAPAY-BG] Missing credentials")
-		updateWithdrawalStatus(withdrawalID, "Failed")
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "KYTAPAY credentials missing"})
 		return
 	}
-
-	// HTTP client dengan timeout
-	client := &http.Client{
-		Timeout: 60 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			DisableKeepAlives:   false,
-			TLSHandshakeTimeout: 10 * time.Second,
-		},
-	}
-
-	// Step 1: Get access token
-	log.Printf("[KYTAPAY-BG] Requesting token...")
-	accessToken, err := getKytapayToken(ctx, client, clientID, clientSecret)
-	if err != nil {
-		log.Printf("[KYTAPAY-BG] Token request failed: %v", err)
-		updateWithdrawalStatus(withdrawalID, "Failed")
-		return
-	}
-	log.Printf("[KYTAPAY-BG] Token OK")
-
-	// Step 2: Create payout
-	log.Printf("[KYTAPAY-BG] Creating payout...")
-	success, message := createKytapayPayout(ctx, client, accessToken, withdrawal.OrderID, withdrawal.FinalAmount, bankCode, accountNumber, accountName, description, notifyURL)
-	
-	if !success {
-		log.Printf("[KYTAPAY-BG] Payout failed: %s", message)
-		updateWithdrawalStatus(withdrawalID, "Failed")
-		return
-	}
-
-	log.Printf("[KYTAPAY-BG] Payout OK, updating to Success...")
-
-	// Update ke Success
-	tx := database.DB.Begin()
-	withdrawal.Status = "Success"
-	if err := tx.Save(&withdrawal).Error; err != nil {
-		tx.Rollback()
-		log.Printf("[KYTAPAY-BG] Failed to update withdrawal: %v", err)
-		return
-	}
-	
-	if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Success").Error; err != nil {
-		tx.Rollback()
-		log.Printf("[KYTAPAY-BG] Failed to update transaction: %v", err)
-		return
-	}
-	
-	if err := tx.Commit().Error; err != nil {
-		log.Printf("[KYTAPAY-BG] Failed to commit: %v", err)
-		return
-	}
-
-	log.Printf("[KYTAPAY-BG] Withdrawal %d completed successfully", withdrawalID)
-}
-
-// Get KYTAPAY access token dengan proper error handling
-func getKytapayToken(ctx context.Context, client *http.Client, clientID, clientSecret string) (string, error) {
 	basic := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + clientSecret))
-	reqBody := map[string]string{"grant_type": "client_credentials"}
-	jsonBody, _ := json.Marshal(reqBody)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.kytapay.com/v2/access-token", bytes.NewReader(jsonBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
+	atkReqBody := map[string]string{"grant_type": "client_credentials"}
+	atkJSON, _ := json.Marshal(atkReqBody)
+	req, _ := http.NewRequest(http.MethodPost, "https://api.kytapay.com/v2/access-token", bytes.NewReader(atkJSON))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Basic "+basic)
-
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY token request failed"})
+		return
 	}
 	defer resp.Body.Close()
-
-	// PENTING: Baca semua body sebelum close
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	log.Printf("[KYTAPAY] Token response status: %d, body: %s", resp.StatusCode, string(bodyBytes))
-
-	var tokenResp struct {
+	var atkResp struct {
 		ResponseCode    string `json:"response_code"`
 		ResponseMessage string `json:"response_message"`
 		ResponseData    struct {
@@ -394,23 +267,15 @@ func getKytapayToken(ctx context.Context, client *http.Client, clientID, clientS
 			ExpiresIn   int    `json:"expires_in"`
 		} `json:"response_data"`
 	}
-
-	if err := json.Unmarshal(bodyBytes, &tokenResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&atkResp); err != nil || atkResp.ResponseData.AccessToken == "" {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY token parse failed"})
+		return
 	}
 
-	if tokenResp.ResponseData.AccessToken == "" {
-		return "", fmt.Errorf("empty token: %s", tokenResp.ResponseMessage)
-	}
-
-	return tokenResp.ResponseData.AccessToken, nil
-}
-
-// Create payout dengan proper error handling
-func createKytapayPayout(ctx context.Context, client *http.Client, token, referenceID string, amount float64, bankCode, accountNumber, accountName, description, notifyURL string) (bool, string) {
+	// 2) Create payout transfer
 	payoutBody := map[string]interface{}{
-		"reference_id": referenceID,
-		"amount":       int64(amount),
+		"reference_id": withdrawal.OrderID,
+		"amount":       int64(withdrawal.FinalAmount),
 		"description":  description,
 		"destination": map[string]interface{}{
 			"code":           bankCode,
@@ -419,70 +284,54 @@ func createKytapayPayout(ctx context.Context, client *http.Client, token, refere
 		},
 		"notify_url": notifyURL,
 	}
-
-	jsonBody, _ := json.Marshal(payoutBody)
-	log.Printf("[KYTAPAY] Payout request: %s", string(jsonBody))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.kytapay.com/v2/payouts/transfers", bytes.NewReader(jsonBody))
+	payoutJSON, _ := json.Marshal(payoutBody)
+	req2, _ := http.NewRequest(http.MethodPost, "https://api.kytapay.com/v2/payouts/transfers", bytes.NewReader(payoutJSON))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer "+atkResp.ResponseData.AccessToken)
+	resp2, err := client.Do(req2)
 	if err != nil {
-		return false, fmt.Sprintf("failed to create request: %v", err)
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY payout request failed"})
+		return
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, fmt.Sprintf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// PENTING: Baca semua body sebelum close
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, fmt.Sprintf("failed to read response: %v", err)
-	}
-
-	log.Printf("[KYTAPAY] Payout response status: %d, body: %s", resp.StatusCode, string(bodyBytes))
-
+	defer resp2.Body.Close()
 	var payoutResp struct {
 		ResponseCode    string `json:"response_code"`
 		ResponseMessage string `json:"response_message"`
 	}
-
-	if err := json.Unmarshal(bodyBytes, &payoutResp); err != nil {
-		return false, fmt.Sprintf("failed to parse response: %v", err)
+	if err := json.NewDecoder(resp2.Body).Decode(&payoutResp); err != nil {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY payout parse failed"})
+		return
 	}
-
+	// Accept 2xx-ish codes starting with 200
 	if len(payoutResp.ResponseCode) < 3 || payoutResp.ResponseCode[:3] != "200" {
-		return false, payoutResp.ResponseMessage
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: payoutResp.ResponseMessage})
+		return
 	}
 
-	return true, "Success"
-}
-
-// Helper untuk update status withdrawal
-func updateWithdrawalStatus(withdrawalID uint, status string) {
+	// Start transaction
 	tx := database.DB.Begin()
-	if err := tx.Model(&models.Withdrawal{}).Where("id = ?", withdrawalID).Update("status", status).Error; err != nil {
+	// Update withdrawal status
+	withdrawal.Status = "Success"
+	if err := tx.Save(&withdrawal).Error; err != nil {
 		tx.Rollback()
-		log.Printf("[KYTAPAY-BG] Failed to update withdrawal status: %v", err)
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal memperbarui status penarikan",
+		})
 		return
 	}
-	
-	var withdrawal models.Withdrawal
-	if err := tx.First(&withdrawal, withdrawalID).Error; err != nil {
+	// Update related transaction status
+	if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Success").Error; err != nil {
 		tx.Rollback()
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal memperbarui status transaksi"})
 		return
 	}
-	
-	if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", status).Error; err != nil {
-		tx.Rollback()
-		log.Printf("[KYTAPAY-BG] Failed to update transaction status: %v", err)
+	if err := tx.Commit().Error; err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal menyimpan perubahan"})
 		return
 	}
-	
-	tx.Commit()
+
+	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "Penarikan berhasil diproses otomatis"})
 }
 
 func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {
@@ -512,6 +361,7 @@ func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only allow rejecting pending withdrawals
 	if withdrawal.Status != "Pending" {
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
 			Success: false,
@@ -520,8 +370,10 @@ func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Start transaction
 	tx := database.DB.Begin()
 
+	// Update withdrawal status
 	withdrawal.Status = "Failed"
 	if err := tx.Save(&withdrawal).Error; err != nil {
 		tx.Rollback()
@@ -532,7 +384,10 @@ func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Failed").Error; err != nil {
+	// Update related transaction status
+	if err := tx.Model(&models.Transaction{}).
+		Where("order_id = ?", withdrawal.OrderID).
+		Update("status", "Failed").Error; err != nil {
 		tx.Rollback()
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
 			Success: false,
@@ -541,6 +396,7 @@ func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Refund the amount to user's balance
 	var user models.User
 	if err := tx.First(&user, withdrawal.UserID).Error; err != nil {
 		tx.Rollback()
@@ -579,6 +435,7 @@ func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// POST /api/payouts/kyta/webhook
 func KytaPayoutWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		CallbackCode    string `json:"callback_code"`
@@ -586,7 +443,7 @@ func KytaPayoutWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		CallbackData    struct {
 			ID          string `json:"id"`
 			ReferenceID string `json:"reference_id"`
-			Amount      int64  `json:"amount"`
+			Amount      string  `json:"amount"`
 			Status      string `json:"status"`
 			PayoutData  struct {
 				Code          string `json:"code"`
@@ -613,11 +470,13 @@ func KytaPayoutWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If status is Success, ignore the callback
 	if status == "Success" {
 		utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "Ignore"})
 		return
 	}
 
+	// If status is not Success, set withdrawal status back to Pending
 	db := database.DB
 	var withdrawal models.Withdrawal
 	if err := db.Where("order_id = ?", referenceID).First(&withdrawal).Error; err != nil {
@@ -625,8 +484,10 @@ func KytaPayoutWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Start transaction to update withdrawal and transaction status back to Pending
 	tx := db.Begin()
 	
+	// Update withdrawal status to Pending
 	withdrawal.Status = "Pending"
 	if err := tx.Save(&withdrawal).Error; err != nil {
 		tx.Rollback()
@@ -637,7 +498,10 @@ func KytaPayoutWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Pending").Error; err != nil {
+	// Update related transaction status to Pending
+	if err := tx.Model(&models.Transaction{}).
+		Where("order_id = ?", withdrawal.OrderID).
+		Update("status", "Pending").Error; err != nil {
 		tx.Rollback()
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
 			Success: false,
