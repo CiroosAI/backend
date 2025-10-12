@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"project/database"
@@ -258,6 +259,12 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+	
+	// Check HTTP status for token request
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: fmt.Sprintf("KYTAPAY token HTTP error %d", resp.StatusCode)})
+		return
+	}
 	var atkResp struct {
 		ResponseCode    string `json:"response_code"`
 		ResponseMessage string `json:"response_message"`
@@ -267,8 +274,19 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 			ExpiresIn   int    `json:"expires_in"`
 		} `json:"response_data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&atkResp); err != nil || atkResp.ResponseData.AccessToken == "" {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY token parse failed"})
+	if err := json.NewDecoder(resp.Body).Decode(&atkResp); err != nil {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Gagal parsing response KYTAPAY token"})
+		return
+	}
+	
+	// Check if KYTAPAY returned error response
+	if atkResp.ResponseCode != "2000100" && atkResp.ResponseCode != "200" {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY error: " + atkResp.ResponseMessage})
+		return
+	}
+	
+	if atkResp.ResponseData.AccessToken == "" {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY token kosong"})
 		return
 	}
 
@@ -294,17 +312,37 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp2.Body.Close()
+	
+	// Read response body to buffer for error handling
+	var bodyBuffer bytes.Buffer
+	bodyBuffer.ReadFrom(resp2.Body)
+	bodyBytes := bodyBuffer.Bytes()
+	
+	// Check HTTP status first
+	if resp2.StatusCode < 200 || resp2.StatusCode >= 300 {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: fmt.Sprintf("KYTAPAY HTTP error %d: %s", resp2.StatusCode, string(bodyBytes))})
+		return
+	}
+	
 	var payoutResp struct {
 		ResponseCode    string `json:"response_code"`
 		ResponseMessage string `json:"response_message"`
+		ResponseData    struct {
+			ID          string `json:"id"`
+			ReferenceID string `json:"reference_id"`
+			Amount      string `json:"amount"`
+			Status      string `json:"status"`
+		} `json:"response_data,omitempty"`
 	}
-	if err := json.NewDecoder(resp2.Body).Decode(&payoutResp); err != nil {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY payout parse failed"})
+	
+	if err := json.Unmarshal(bodyBytes, &payoutResp); err != nil {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Gagal parsing response KYTAPAY payout"})
 		return
 	}
-	// Accept 2xx-ish codes starting with 200
-	if len(payoutResp.ResponseCode) < 3 || payoutResp.ResponseCode[:3] != "200" {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: payoutResp.ResponseMessage})
+	
+	// Check KYTAPAY response code - accept success codes
+	if payoutResp.ResponseCode != "2001000" && payoutResp.ResponseCode != "200" && !strings.HasPrefix(payoutResp.ResponseCode, "200") {
+		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "KYTAPAY payout error: " + payoutResp.ResponseMessage})
 		return
 	}
 
