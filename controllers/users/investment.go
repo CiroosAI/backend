@@ -766,8 +766,14 @@ func CronDailyReturnsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Back Amount to User
+			// NO TEAM BONUSES - removed completely
+
+			nowTime := time.Now()
+			nextTime := nowTime.Add(24 * time.Hour)
+			updates := map[string]interface{}{"total_paid": paid, "total_returned": returned, "last_return_at": nowTime, "next_return_at": nextTime}
 			if paid >= inv.Duration {
+				updates["status"] = "Completed"
+
 				newBalance := round3(user.Balance + inv.Amount)
 				if err := tx.Model(&user).Update("balance", newBalance).Error; err != nil {
 					return err
@@ -788,15 +794,6 @@ func CronDailyReturnsHandler(w http.ResponseWriter, r *http.Request) {
 				if err := tx.Create(&trx).Error; err != nil {
 					return err
 				}
-			}
-
-			// NO TEAM BONUSES - removed completely
-
-			nowTime := time.Now()
-			nextTime := nowTime.Add(24 * time.Hour)
-			updates := map[string]interface{}{"total_paid": paid, "total_returned": returned, "last_return_at": nowTime, "next_return_at": nextTime}
-			if paid >= inv.Duration {
-				updates["status"] = "Completed"
 			}
 			if err := tx.Model(&inv).Updates(updates).Error; err != nil {
 				return err
