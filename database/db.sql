@@ -46,6 +46,9 @@ CREATE TABLE `admins` (
 INSERT INTO `admins` (`id`, `username`, `password`, `name`, `email`, `role`, `is_active`, `created_at`, `updated_at`) VALUES
 (1, 'admin', '$2y$10$I4qWolurBpmNKJlQUqb6CeBASh/8Sv59gWu6Ys.m9UsXPLdRLm0du', 'Admin', 'admin@vladevs.com', 'admin', 1, '2000-01-01 00:00:00.000', '2000-01-01 00:00:00.000');
 
+INSERT INTO `admins` (`id`, `username`, `password`, `name`, `email`, `role`, `is_active`, `created_at`, `updated_at`) VALUES
+(2, 'admin', '$2y$10$I4qWolurBpmNKJlQUqb6CeBASh/8Sv59gWu6Ys.m9UsXPLdRLm0du', 'Admin2', 'admin2@vladevs.com', 'admin', 1, '2000-01-01 00:00:00.000', '2000-01-01 00:00:00.000');
+
 -- --------------------------------------------------------
 
 --
@@ -92,6 +95,31 @@ CREATE TABLE `bank_accounts` (
 -- --------------------------------------------------------
 
 --
+-- Struktur dari tabel `categories`
+--
+
+CREATE TABLE `categories` (
+  `id` int UNSIGNED NOT NULL,
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+  `profit_type` enum('locked','unlocked') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'unlocked' COMMENT 'locked=paid at completion, unlocked=paid daily',
+  `status` enum('Active','Inactive') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Active',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Product categories';
+
+--
+-- Dumping data untuk tabel `categories`
+--
+
+INSERT INTO `categories` (`id`, `name`, `description`, `profit_type`, `status`, `created_at`, `updated_at`) VALUES
+(1, 'Monitor', 'Profit terkunci, dibayarkan saat investasi selesai', 'locked', 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(2, 'Insight', 'Profit langsung dibayarkan', 'unlocked', 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(3, 'AutoPilot', 'Profit langsung dibayarkan', 'unlocked', 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00');
+
+-- --------------------------------------------------------
+
+--
 -- Struktur dari tabel `forums`
 --
 
@@ -116,12 +144,12 @@ CREATE TABLE `investments` (
   `id` int UNSIGNED NOT NULL,
   `user_id` int NOT NULL,
   `product_id` int UNSIGNED NOT NULL,
+  `category_id` int UNSIGNED NOT NULL COMMENT 'Reference to categories table for profit handling',
   `amount` decimal(15,2) NOT NULL,
-  `percentage` decimal(5,2) NOT NULL,
-  `duration` int NOT NULL,
   `daily_profit` decimal(15,2) NOT NULL,
-  `total_paid` int NOT NULL DEFAULT '0',
-  `total_returned` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `duration` int NOT NULL,
+  `total_paid` int NOT NULL DEFAULT '0' COMMENT 'Number of days paid',
+  `total_returned` decimal(15,2) NOT NULL DEFAULT '0.00' COMMENT 'Total profit accumulated (not paid for locked categories until completion)',
   `last_return_at` datetime DEFAULT NULL,
   `next_return_at` datetime DEFAULT NULL,
   `order_id` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -187,11 +215,13 @@ INSERT INTO `payment_settings` (`id`, `pakasir_api_key`, `pakasir_project`, `dep
 
 CREATE TABLE `products` (
   `id` int UNSIGNED NOT NULL,
-  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `minimum` decimal(15,2) NOT NULL,
-  `maximum` decimal(15,2) NOT NULL,
-  `percentage` decimal(5,2) NOT NULL,
-  `duration` int NOT NULL,
+  `category_id` int UNSIGNED NOT NULL COMMENT 'Reference to categories table',
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `amount` decimal(15,2) NOT NULL COMMENT 'Fixed investment amount',
+  `daily_profit` decimal(15,2) NOT NULL COMMENT 'Fixed daily profit amount',
+  `duration` int NOT NULL COMMENT 'Duration in days',
+  `required_vip` int DEFAULT '0' COMMENT 'Required VIP level (0 means no requirement)',
+  `purchase_limit` int DEFAULT '0' COMMENT 'Maximum purchases per user (0 = unlimited)',
   `status` enum('Active','Inactive') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Active',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -201,10 +231,26 @@ CREATE TABLE `products` (
 -- Dumping data untuk tabel `products`
 --
 
-INSERT INTO `products` (`id`, `name`, `minimum`, `maximum`, `percentage`, `duration`, `status`, `created_at`, `updated_at`) VALUES
-(1, 'Bintang 1', 30000.00, 1000000.00, 100.00, 200, 'Active', '2025-09-07 02:06:16', '2025-09-17 16:22:49'),
-(2, 'Bintang 2', 1500000.00, 3000000.00, 100.00, 67, 'Active', '2025-09-07 02:06:16', '2025-09-10 15:37:28'),
-(3, 'Bintang 3', 5000000.00, 10000000.00, 100.00, 40, 'Active', '2025-09-07 02:06:16', '2025-09-10 15:37:32');
+INSERT INTO `products` (`id`, `category_id`, `name`, `amount`, `daily_profit`, `duration`, `required_vip`, `purchase_limit`, `status`, `created_at`, `updated_at`) VALUES
+-- Monitor Category (category_id=1, Locked Profit, No Purchase Limit)
+(1, 1, 'Monitor 1', 50000.00, 15000.00, 70, 0, 0, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(2, 1, 'Monitor 2', 200000.00, 68000.00, 60, 0, 0, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(3, 1, 'Monitor 3', 500000.00, 175000.00, 65, 0, 0, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(4, 1, 'Monitor 4', 1250000.00, 432000.00, 65, 0, 0, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(5, 1, 'Monitor 5', 2800000.00, 1050000.00, 65, 0, 0, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(6, 1, 'Monitor 6', 7000000.00, 2660000.00, 50, 0, 0, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(7, 1, 'Monitor 7', 20000000.00, 8000000.00, 50, 0, 0, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+-- Insight Category (category_id=2, Unlocked Profit, Limited to 1x per product)
+(8, 2, 'Insight 1', 50000.00, 20000.00, 1, 1, 1, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(9, 2, 'Insight 2', 250000.00, 275000.00, 1, 2, 1, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(10, 2, 'Insight 3', 700000.00, 950000.00, 1, 3, 1, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(11, 2, 'Insight 4', 2000000.00, 3600000.00, 1, 4, 1, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(12, 2, 'Insight 5', 8000000.00, 16000000.00, 1, 5, 1, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+-- AutoPilot Category (category_id=3, All require VIP3, Limited purchases)
+(13, 3, 'AutoPilot 1', 80000.00, 70000.00, 1, 3, 2, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(14, 3, 'AutoPilot 2', 165000.00, 150000.00, 1, 3, 2, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(15, 3, 'AutoPilot 3', 750000.00, 1000000.00, 1, 3, 1, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00'),
+(16, 3, 'AutoPilot 4', 2450000.00, 4000000.00, 1, 3, 1, 'Active', '2025-10-11 00:00:00', '2025-10-11 00:00:00');
 
 -- --------------------------------------------------------
 
@@ -247,6 +293,7 @@ CREATE TABLE `settings` (
   `withdraw_charge` decimal(15,2) NOT NULL,
   `maintenance` tinyint(1) NOT NULL DEFAULT '0',
   `closed_register` tinyint(1) NOT NULL DEFAULT '0',
+  `auto_withdraw` tinyint(1) NOT NULL DEFAULT '0',
   `link_cs` text NOT NULL,
   `link_group` text NOT NULL,
   `link_app` text NOT NULL
@@ -256,8 +303,8 @@ CREATE TABLE `settings` (
 -- Dumping data untuk tabel `settings`
 --
 
-INSERT INTO `settings` (`id`, `name`, `company`, `logo`, `min_withdraw`, `max_withdraw`, `withdraw_charge`, `maintenance`, `closed_register`, `link_cs`, `link_group`, `link_app`) VALUES
-(1, 'Vla Devs', 'Vla Devs', 'logo.png', 33000.00, 10000000.00, 10.00, 0, 0, 'https://t.me/', 'https://t.me/', 'https://vladevs.com');
+INSERT INTO `settings` (`id`, `name`, `company`, `logo`, `min_withdraw`, `max_withdraw`, `withdraw_charge`, `maintenance`, `closed_register`, `auto_withdraw`, `link_cs`, `link_group`, `link_app`) VALUES
+(1, 'Vla Devs', 'Vla Devs', 'logo.png', 33000.00, 10000000.00, 10.00, 0, 0, 0, 'https://t.me/', 'https://t.me/', 'https://vladevs.com');
 
 -- --------------------------------------------------------
 
@@ -371,8 +418,9 @@ CREATE TABLE `users` (
   `reff_code` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `reff_by` bigint UNSIGNED DEFAULT NULL,
   `balance` decimal(15,2) DEFAULT '0.00',
-  `level` bigint NOT NULL DEFAULT '0',
-  `total_invest` decimal(15,2) DEFAULT '0.00',
+  `level` bigint NOT NULL DEFAULT '0' COMMENT 'VIP level (0-5)',
+  `total_invest` decimal(15,2) DEFAULT '0.00' COMMENT 'Total all investments',
+  `total_invest_vip` decimal(15,2) DEFAULT '0.00' COMMENT 'Total locked category investments for VIP level calculation',
   `spin_ticket` bigint DEFAULT '0',
   `status` enum('Active','Inactive','Suspend') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
   `investment_status` enum('Active','Inactive') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'Inactive',
@@ -384,8 +432,8 @@ CREATE TABLE `users` (
 -- Dumping data untuk tabel `users`
 --
 
-INSERT INTO `users` (`id`, `name`, `number`, `password`, `reff_code`, `reff_by`, `balance`, `level`, `total_invest`, `spin_ticket`, `status`, `investment_status`, `created_at`, `updated_at`) VALUES
-(1, 'VLA Users', '8123456789', '$2y$10$fa5X/6ZfpaNZsa07TyzO3ukL/AtxtGLv.6erFIw9KmXFNYyFbE656', 'VLAREFF', 0, 2000.00, 5, 1000.00, 100, 'Active', 'Active', '2025-01-01 00:00:00.000', '2025-01-01 00:00:00.000');
+INSERT INTO `users` (`id`, `name`, `number`, `password`, `reff_code`, `reff_by`, `balance`, `level`, `total_invest`, `total_invest_vip`, `spin_ticket`, `status`, `investment_status`, `created_at`, `updated_at`) VALUES
+(1, 'Ciroos Users Management', '812345678', '$2y$10$fa5X/6ZfpaNZsa07TyzO3ukL/AtxtGLv.6erFIw9KmXFNYyFbE656', 'CIROOS', 0, 0.00, 0, 0.00, 0.00, 100, 'Active', 'Active', '2025-01-01 00:00:00.000', '2025-01-01 00:00:00.000');
 
 -- --------------------------------------------------------
 
@@ -484,6 +532,13 @@ ALTER TABLE `bank_accounts`
   ADD KEY `idx_bank_id` (`bank_id`);
 
 --
+-- Indeks untuk tabel `categories`
+--
+ALTER TABLE `categories`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_status` (`status`);
+
+--
 -- Indeks untuk tabel `forums`
 --
 ALTER TABLE `forums`
@@ -498,6 +553,7 @@ ALTER TABLE `investments`
   ADD UNIQUE KEY `order_id` (`order_id`),
   ADD KEY `idx_user_id` (`user_id`),
   ADD KEY `idx_product_id` (`product_id`),
+  ADD KEY `idx_category_id` (`category_id`),
   ADD KEY `idx_status` (`status`),
   ADD KEY `idx_next_return_at` (`next_return_at`);
 
@@ -520,8 +576,9 @@ ALTER TABLE `payment_settings`
 --
 ALTER TABLE `products`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `name` (`name`),
-  ADD KEY `idx_products_status` (`status`);
+  ADD KEY `idx_products_status` (`status`),
+  ADD KEY `idx_products_category_id` (`category_id`),
+  ADD KEY `idx_products_required_vip` (`required_vip`);
 
 --
 -- Indeks untuk tabel `refresh_tokens`
@@ -636,6 +693,12 @@ ALTER TABLE `bank_accounts`
   MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT untuk tabel `categories`
+--
+ALTER TABLE `categories`
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
 -- AUTO_INCREMENT untuk tabel `forums`
 --
 ALTER TABLE `forums`
@@ -663,7 +726,7 @@ ALTER TABLE `payment_settings`
 -- AUTO_INCREMENT untuk tabel `products`
 --
 ALTER TABLE `products`
-  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT untuk tabel `settings`
@@ -744,7 +807,14 @@ ALTER TABLE `forums`
 --
 ALTER TABLE `investments`
   ADD CONSTRAINT `fk_investments_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
+  ADD CONSTRAINT `fk_investments_category` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE RESTRICT,
   ADD CONSTRAINT `fk_investments_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Ketidakleluasaan untuk tabel `products`
+--
+ALTER TABLE `products`
+  ADD CONSTRAINT `fk_products_category` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE RESTRICT;
 
 --
 -- Ketidakleluasaan untuk tabel `transactions`

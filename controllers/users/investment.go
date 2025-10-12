@@ -57,10 +57,9 @@ type KytaPaymentResponse struct {
 }
 
 type CreateInvestmentRequest struct {
-	ProductID      uint    `json:"product_id"`
-	Amount         float64 `json:"amount"`
-	PaymentMethod  string  `json:"payment_method"`
-	PaymentChannel string  `json:"payment_channel"`
+	ProductID      uint   `json:"product_id"`
+	PaymentMethod  string `json:"payment_method"`
+	PaymentChannel string `json:"payment_channel"`
 }
 
 // GET /api/users/investment/active
@@ -71,47 +70,75 @@ func GetActiveInvestmentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	db := database.DB
-	var products []models.Product
-	if err := db.Where("status = ?", "Active").Order("id ASC").Find(&products).Error; err != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal mengambil produk"})
+
+	// Get active categories (prioritize category ID 1)
+	var categories []models.Category
+	if err := db.Where("status = ?", "Active").Order("CASE WHEN id = 1 THEN 0 ELSE id END ASC").Find(&categories).Error; err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal mengambil kategori"})
 		return
 	}
+
 	var investments []models.Investment
-	if err := db.Where("user_id = ? AND status IN ?", uid, []string{"Running", "Completed", "Suspended"}).Order("product_id ASC, id DESC").Find(&investments).Error; err != nil {
+	if err := db.Preload("Category").Where("user_id = ? AND status IN ?", uid, []string{"Running", "Completed", "Suspended"}).Order("CASE WHEN category_id = 1 THEN 0 ELSE category_id END ASC, product_id ASC, id DESC").Find(&investments).Error; err != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal mengambil investasi"})
 		return
 	}
-	invMap := make(map[uint][]models.Investment)
+
+	// Group investments by category name
+	categoryMap := make(map[string][]map[string]interface{})
 	for _, inv := range investments {
-		invMap[inv.ProductID] = append(invMap[inv.ProductID], inv)
-	}
-	resp := make(map[string]interface{})
-	for _, prod := range products {
-		var result []map[string]interface{}
-		if invs, ok := invMap[prod.ID]; ok && len(invs) > 0 {
-			for _, inv := range invs {
-				m := map[string]interface{}{
-					"id":             inv.ID,
-					"user_id":        inv.UserID,
-					"product_id":     inv.ProductID,
-					"amount":         int64(inv.Amount),
-					"percentage":     inv.Percentage,
-					"duration":       inv.Duration,
-					"daily_profit":   int64(inv.DailyProfit),
-					"total_paid":     inv.TotalPaid,
-					"total_returned": int64(inv.TotalReturned),
-					"last_return_at": inv.LastReturnAt,
-					"next_return_at": inv.NextReturnAt,
-					"order_id":       inv.OrderID,
-					"status":         inv.Status,
-				}
-				result = append(result, m)
+		var product models.Product
+		if err := db.Preload("Category").Where("id = ?", inv.ProductID).First(&product).Error; err != nil {
+			continue
+		}
+
+		catName := ""
+		if inv.Category != nil {
+			catName = inv.Category.Name
+		}
+
+		// Prepare product category info
+		var productCategory map[string]interface{}
+		if product.Category != nil {
+			productCategory = map[string]interface{}{
+				"id":          product.Category.ID,
+				"name":        product.Category.Name,
+				"status":      product.Category.Status,
+				"profit_type": product.Category.ProfitType,
 			}
-			resp[prod.Name] = result
+		}
+
+		m := map[string]interface{}{
+			"id":               inv.ID,
+			"user_id":          inv.UserID,
+			"product_id":       inv.ProductID,
+			"product_name":     product.Name,
+			"product_category": productCategory,
+			"category_id":      inv.CategoryID,
+			"category_name":    catName,
+			"amount":           int64(inv.Amount),
+			"duration":         inv.Duration,
+			"daily_profit":     int64(inv.DailyProfit),
+			"total_paid":       inv.TotalPaid,
+			"total_returned":   int64(inv.TotalReturned),
+			"last_return_at":   inv.LastReturnAt,
+			"next_return_at":   inv.NextReturnAt,
+			"order_id":         inv.OrderID,
+			"status":           inv.Status,
+		}
+		categoryMap[catName] = append(categoryMap[catName], m)
+	}
+
+	// Ensure all categories exist in response
+	resp := make(map[string]interface{})
+	for _, cat := range categories {
+		if invs, ok := categoryMap[cat.Name]; ok {
+			resp[cat.Name] = invs
 		} else {
-			resp[prod.Name] = []map[string]interface{}{}
+			resp[cat.Name] = []map[string]interface{}{}
 		}
 	}
+
 	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "Successfully", Data: resp})
 }
 
@@ -145,7 +172,7 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	db := database.DB
 	var product models.Product
-	if err := db.Where("id = ? AND status = 'Active'", req.ProductID).First(&product).Error; err != nil {
+	if err := db.Preload("Category").Where("id = ? AND status = 'Active'", req.ProductID).First(&product).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Produk tidak ditemukan"})
 			return
@@ -153,20 +180,42 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan, coba lagi"})
 		return
 	}
-	if req.Amount < product.Minimum || req.Amount > product.Maximum {
-		msg := fmt.Sprintf("Nominal investasi untuk %s harus antara Rp%.0f - Rp%.0f", product.Name, product.Minimum, product.Maximum)
+
+	// Check if product category exists
+	if product.Category == nil {
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Kategori produk tidak valid"})
+		return
+	}
+
+	// Check VIP requirement - user level must be >= product required_vip
+	var user models.User
+	if err := db.Select("level").Where("id = ?", uid).First(&user).Error; err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan, coba lagi"})
+		return
+	}
+
+	userLevel := uint(0)
+	if user.Level != nil {
+		userLevel = *user.Level
+	}
+
+	if userLevel < uint(product.RequiredVIP) {
+		msg := fmt.Sprintf("Produk %s memerlukan VIP level %d. Level VIP Anda saat ini: %d", product.Name, product.RequiredVIP, userLevel)
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: msg})
 		return
 	}
 
-	if req.ProductID == 2 || req.ProductID == 3 {
-		var user models.User
-		if err := db.Select("total_invest").Where("id = ?", uid).First(&user).Error; err != nil {
+	// Check purchase limit - only count paid investments (Running/Completed)
+	if product.PurchaseLimit > 0 {
+		var purchaseCount int64
+		if err := db.Model(&models.Investment{}).
+			Where("user_id = ? AND product_id = ? AND status IN ?", uid, product.ID, []string{"Running", "Completed", "Suspended"}).
+			Count(&purchaseCount).Error; err != nil {
 			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan, coba lagi"})
 			return
 		}
-		if user.TotalInvest < 200000 {
-			msg := fmt.Sprintf("Anda harus berinvestasi pada Bintang 1 senilai Rp200.000 terlebih dahulu sebelum berinvestasi pada %s", product.Name)
+		if purchaseCount >= int64(product.PurchaseLimit) {
+			msg := fmt.Sprintf("Anda telah mencapai batas pembelian untuk produk %s (maksimal %dx)", product.Name, product.PurchaseLimit)
 			utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: msg})
 			return
 		}
@@ -197,11 +246,24 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use product's fixed amount
+	amount := product.Amount
+
+	if method == "QRIS" && amount > 10000000 {
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Jumlah pembayaran maksimal menggunakan QRIS adalah Rp 10.000.000, Silahkan gunakan metode pembayaran lain"})
+		return
+	}
+
+	if method == "BANK" && amount < 10000 {
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Jumlah pembayaran minimal menggunakan BANK adalah Rp 10.000, Silahkan gunakan metode pembayaran lain"})
+		return
+	}
+
 	var payResp *KytaPaymentResponse
 	if method == "QRIS" {
-		payResp, err = createKytaQRIS(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(req.Amount), notifyURL, successURL, failedURL)
+		payResp, err = createKytaQRIS(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), notifyURL, successURL, failedURL)
 	} else {
-		payResp, err = createKytaVA(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(req.Amount), channel, notifyURL, successURL, failedURL)
+		payResp, err = createKytaVA(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), channel, notifyURL, successURL, failedURL)
 	}
 
 	if err != nil {
@@ -213,15 +275,16 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	daily := round3((req.Amount*product.Percentage/100.0 + req.Amount) / float64(product.Duration))
+	// Use product's fixed daily profit
+	daily := product.DailyProfit
 
 	inv := models.Investment{
 		UserID:        uid,
 		ProductID:     product.ID,
-		Amount:        req.Amount,
-		Percentage:    product.Percentage,
-		Duration:      product.Duration,
+		CategoryID:    product.CategoryID,
+		Amount:        amount,
 		DailyProfit:   daily,
+		Duration:      product.Duration,
 		TotalPaid:     0,
 		TotalReturned: 0,
 		OrderID:       orderID,
@@ -320,7 +383,8 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 		"order_id":     inv.OrderID,
 		"amount":       inv.Amount,
 		"product":      product.Name,
-		"percentage":   product.Percentage,
+		"category":     product.Category.Name,
+		"category_id":  product.CategoryID,
 		"duration":     product.Duration,
 		"daily_profit": daily,
 		"status":       inv.Status,
@@ -457,7 +521,7 @@ func KytaWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		CallbackData    struct {
 			ID          string `json:"id"`
 			ReferenceID string `json:"reference_id"`
-			Amount      string  `json:"amount"`
+			Amount      string `json:"amount"`
 			Status      string `json:"status"`
 			PaymentType string `json:"payment_type"`
 			PaymentData struct {
@@ -534,27 +598,45 @@ func KytaWebhookHandler(w http.ResponseWriter, r *http.Request) {
 			if err := tx.Model(&inv).Updates(updates).Error; err != nil {
 				return err
 			}
-			if err := tx.Model(&models.User{}).Where("id = ?", inv.UserID).Updates(map[string]interface{}{
-				"total_invest":      gorm.Expr("total_invest + ?", inv.Amount),
-				"investment_status": "Active",
-			}).Error; err != nil {
-				return err
-			}
 
-			var userLevel uint
-			if err := tx.Model(&models.User{}).Select("level").Where("id = ?", inv.UserID).Scan(&userLevel).Error; err != nil {
-				return err
-			}
-			if inv.ProductID > userLevel {
-				if err := tx.Model(&models.User{}).Where("id = ?", inv.UserID).Update("level", inv.ProductID).Error; err != nil {
-					return err
+			// Get category info to determine if this is Monitor (locked profit)
+			var category models.Category
+			isMonitor := false
+			if err := tx.Where("id = ?", inv.CategoryID).First(&category).Error; err == nil {
+				if category.ProfitType == "locked" {
+					isMonitor = true
 				}
 			}
 
+			// Update user total_invest and total_invest_vip
+			userUpdates := map[string]interface{}{
+				"total_invest":      gorm.Expr("total_invest + ?", inv.Amount),
+				"investment_status": "Active",
+			}
+			if isMonitor {
+				userUpdates["total_invest_vip"] = gorm.Expr("total_invest_vip + ?", inv.Amount)
+			}
+			if err := tx.Model(&models.User{}).Where("id = ?", inv.UserID).Updates(userUpdates).Error; err != nil {
+				return err
+			}
+
+			// Calculate VIP level based on total_invest_vip for locked categories
+			if isMonitor {
+				var user models.User
+				if err := tx.Model(&models.User{}).Select("total_invest_vip").Where("id = ?", inv.UserID).First(&user).Error; err == nil {
+					newLevel := calculateVIPLevel(user.TotalInvestVIP)
+					if err := tx.Model(&models.User{}).Where("id = ?", inv.UserID).Update("level", newLevel).Error; err != nil {
+						return err
+					}
+				}
+			}
+
+			// Bonus rekomendasi investor hanya untuk level 1: 30% dari amount
 			var user models.User
 			if err := tx.Select("id, reff_by").Where("id = ?", inv.UserID).First(&user).Error; err == nil && user.ReffBy != nil {
 				var level1 models.User
-				if err := tx.Select("id, reff_by, spin_ticket").Where("id = ?", *user.ReffBy).First(&level1).Error; err == nil {
+				if err := tx.Select("id, spin_ticket").Where("id = ?", *user.ReffBy).First(&level1).Error; err == nil {
+					// Give spin ticket if investment >= 100k
 					if inv.Amount >= 100000 {
 						if level1.SpinTicket == nil {
 							one := uint(1)
@@ -564,60 +646,21 @@ func KytaWebhookHandler(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 
-					bonus1 := round3(inv.Amount * 0.10)
-					tx.Model(&models.User{}).Where("id = ?", level1.ID).UpdateColumn("balance", gorm.Expr("balance + ?", bonus1))
-					msg1 := "Bonus rekomendasi investor level 1"
-					trx1 := models.Transaction{
+					// Give 30% bonus to direct referrer
+					bonus := round3(inv.Amount * 0.30)
+					tx.Model(&models.User{}).Where("id = ?", level1.ID).UpdateColumn("balance", gorm.Expr("balance + ?", bonus))
+					msg := "Bonus rekomendasi investor"
+					trx := models.Transaction{
 						UserID:          level1.ID,
-						Amount:          bonus1,
+						Amount:          bonus,
 						Charge:          0,
 						OrderID:         utils.GenerateOrderID(level1.ID),
 						TransactionFlow: "debit",
 						TransactionType: "team",
-						Message:         &msg1,
+						Message:         &msg,
 						Status:          "Success",
 					}
-					tx.Create(&trx1)
-
-					if level1.ReffBy != nil {
-						var level2 models.User
-						if err := tx.Select("id, reff_by").Where("id = ?", *level1.ReffBy).First(&level2).Error; err == nil {
-							bonus2 := round3(inv.Amount * 0.05)
-							tx.Model(&models.User{}).Where("id = ?", level2.ID).UpdateColumn("balance", gorm.Expr("balance + ?", bonus2))
-							msg2 := "Bonus rekomendasi investor level 2"
-							trx2 := models.Transaction{
-								UserID:          level2.ID,
-								Amount:          bonus2,
-								Charge:          0,
-								OrderID:         utils.GenerateOrderID(level2.ID),
-								TransactionFlow: "debit",
-								TransactionType: "bonus",
-								Message:         &msg2,
-								Status:          "Success",
-							}
-							tx.Create(&trx2)
-
-							if level2.ReffBy != nil {
-								var level3 models.User
-								if err := tx.Select("id").Where("id = ?", *level2.ReffBy).First(&level3).Error; err == nil {
-									bonus3 := round3(inv.Amount * 0.01)
-									tx.Model(&models.User{}).Where("id = ?", level3.ID).UpdateColumn("balance", gorm.Expr("balance + ?", bonus3))
-									msg3 := "Bonus rekomendasi investor level 3"
-									trx3 := models.Transaction{
-										UserID:          level3.ID,
-										Amount:          bonus3,
-										Charge:          0,
-										OrderID:         utils.GenerateOrderID(level3.ID),
-										TransactionFlow: "debit",
-										TransactionType: "bonus",
-										Message:         &msg3,
-										Status:          "Success",
-									}
-									tx.Create(&trx3)
-								}
-							}
-						}
-					}
+					tx.Create(&trx)
 				}
 			}
 			return nil
@@ -658,94 +701,71 @@ func CronDailyReturnsHandler(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 
+			// Get category to check profit type
+			var category models.Category
+			if err := tx.Where("id = ?", inv.CategoryID).First(&category).Error; err != nil {
+				return err
+			}
+
 			amount := inv.DailyProfit
-			newBalance := round3(user.Balance + amount)
-			if err := tx.Model(&user).Update("balance", newBalance).Error; err != nil {
-				return err
-			}
-
-			orderID := utils.GenerateOrderID(inv.UserID)
-			msg := fmt.Sprintf("Daily profit investasi #%d", inv.ID)
-			trx := models.Transaction{
-				UserID:          inv.UserID,
-				Amount:          amount,
-				Charge:          0,
-				OrderID:         orderID,
-				TransactionFlow: "debit",
-				TransactionType: "return",
-				Message:         &msg,
-				Status:          "Success",
-			}
-			if err := tx.Create(&trx).Error; err != nil {
-				return err
-			}
-
-			levelPercents := []float64{0.05, 0.02, 0.01}
-			levelMsgs := []string{
-				"Bonus manajemen tim level 1",
-				"Bonus manajemen tim level 2",
-				"Bonus manajemen tim level 3",
-			}
-			currReffBy := user.ReffBy
-			userLevel := user.Level
-			for level := 0; level < 3 && currReffBy != nil; level++ {
-				var reffUser models.User
-				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id, balance, reff_by, level").Where("id = ?", *currReffBy).First(&reffUser).Error; err != nil {
-					break
-				}
-				var reffLevelVal, userLevelVal uint
-				if rlPtr, ok := any(reffUser.Level).(*uint); ok && rlPtr != nil {
-					reffLevelVal = *rlPtr
-				} else {
-					if reffUser.Level != nil {
-						reffLevelVal = *reffUser.Level
-					} else {
-						reffLevelVal = 0
-					}
-				}
-				if ulPtr, ok := any(userLevel).(*uint); ok && ulPtr != nil {
-					userLevelVal = *ulPtr
-				} else {
-					if userLevel != nil {
-						userLevelVal = *userLevel
-					} else {
-						userLevelVal = 0
-					}
-				}
-				if reffLevelVal < userLevelVal {
-					currReffBy = reffUser.ReffBy
-					continue
-				}
-				bonus := round3(amount * levelPercents[level])
-				if bonus > 0 {
-					newReffBalance := round3(reffUser.Balance + bonus)
-					if err := tx.Model(&reffUser).Update("balance", newReffBalance).Error; err != nil {
-						return err
-					}
-					orderID := utils.GenerateOrderID(reffUser.ID)
-					msg := levelMsgs[level]
-					trxBonus := models.Transaction{
-						UserID:          reffUser.ID,
-						Amount:          bonus,
-						Charge:          0,
-						OrderID:         orderID,
-						TransactionFlow: "debit",
-						TransactionType: "team",
-						Message:         &msg,
-						Status:          "Success",
-					}
-					if err := tx.Create(&trxBonus).Error; err != nil {
-						return err
-					}
-				}
-				currReffBy = reffUser.ReffBy
-			}
-
-			now := time.Now()
-			next := now.Add(24 * time.Hour)
 			paid := inv.TotalPaid + 1
 			returned := round3(inv.TotalReturned + amount)
-			updates := map[string]interface{}{"total_paid": paid, "total_returned": returned, "last_return_at": now, "next_return_at": next}
+
+			// For locked (Monitor) category: Don't pay to balance until completion, just accumulate
+			// For unlocked (Insight/AutoPilot): Pay to balance immediately
+			if category.ProfitType == "unlocked" {
+				newBalance := round3(user.Balance + amount)
+				if err := tx.Model(&user).Update("balance", newBalance).Error; err != nil {
+					return err
+				}
+
+				orderID := utils.GenerateOrderID(inv.UserID)
+				msg := fmt.Sprintf("Profit investasi #%d", inv.ID)
+				trx := models.Transaction{
+					UserID:          inv.UserID,
+					Amount:          amount,
+					Charge:          0,
+					OrderID:         orderID,
+					TransactionFlow: "debit",
+					TransactionType: "return",
+					Message:         &msg,
+					Status:          "Success",
+				}
+				if err := tx.Create(&trx).Error; err != nil {
+					return err
+				}
+			}
+
+			// For locked (Monitor): If completing, pay total accumulated profit
+			if category.ProfitType == "locked" && paid >= inv.Duration {
+				totalProfit := round3(inv.DailyProfit * float64(inv.Duration))
+				newBalance := round3(user.Balance + totalProfit)
+				if err := tx.Model(&user).Update("balance", newBalance).Error; err != nil {
+					return err
+				}
+
+				orderID := utils.GenerateOrderID(inv.UserID)
+				msg := fmt.Sprintf("Total profit investasi #%d selesai", inv.ID)
+				trx := models.Transaction{
+					UserID:          inv.UserID,
+					Amount:          totalProfit,
+					Charge:          0,
+					OrderID:         orderID,
+					TransactionFlow: "debit",
+					TransactionType: "return",
+					Message:         &msg,
+					Status:          "Success",
+				}
+				if err := tx.Create(&trx).Error; err != nil {
+					return err
+				}
+			}
+
+			// NO TEAM BONUSES - removed completely
+
+			nowTime := time.Now()
+			nextTime := nowTime.Add(24 * time.Hour)
+			updates := map[string]interface{}{"total_paid": paid, "total_returned": returned, "last_return_at": nowTime, "next_return_at": nextTime}
 			if paid >= inv.Duration {
 				updates["status"] = "Completed"
 			}
@@ -904,4 +924,21 @@ func createKytaVA(ctx context.Context, client *http.Client, baseURL, accessToken
 
 func round3(f float64) float64 {
 	return float64(int(f*100+0.5)) / 100
+}
+
+// calculateVIPLevel determines VIP level based on total locked category investments
+// VIP1: 50k, VIP2: 1.2M, VIP3: 7M, VIP4: 30M, VIP5: 150M
+func calculateVIPLevel(totalInvestVIP float64) uint {
+	if totalInvestVIP >= 150000000 {
+		return 5
+	} else if totalInvestVIP >= 30000000 {
+		return 4
+	} else if totalInvestVIP >= 7000000 {
+		return 3
+	} else if totalInvestVIP >= 1200000 {
+		return 2
+	} else if totalInvestVIP >= 50000 {
+		return 1
+	}
+	return 0
 }

@@ -15,6 +15,7 @@ type SettingRequest struct {
 	MinWithdraw    float64 `json:"min_withdraw"`
 	MaxWithdraw    float64 `json:"max_withdraw"`
 	WithdrawCharge float64 `json:"withdraw_charge"`
+	AutoWithdraw   bool    `json:"auto_withdraw"`
 	Maintenance    bool    `json:"maintenance"`
 	ClosedRegister bool    `json:"closed_register"`
 	LinkCS         string  `json:"link_cs"`
@@ -43,6 +44,7 @@ func GetSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		"min_withdraw":    setting.MinWithdraw,
 		"max_withdraw":    setting.MaxWithdraw,
 		"withdraw_charge": setting.WithdrawCharge,
+		"auto_withdraw":   setting.AutoWithdraw,
 		"maintenance":     setting.Maintenance,
 		"closed_register": setting.ClosedRegister,
 		"link_cs":         setting.LinkCS,
@@ -87,6 +89,7 @@ func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	setting.MinWithdraw = req.MinWithdraw
 	setting.MaxWithdraw = req.MaxWithdraw
 	setting.WithdrawCharge = req.WithdrawCharge
+	setting.AutoWithdraw = req.AutoWithdraw
 	setting.Maintenance = req.Maintenance
 	setting.ClosedRegister = req.ClosedRegister
 	setting.LinkCS = req.LinkCS
@@ -109,6 +112,7 @@ func UpdateSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		"min_withdraw":    setting.MinWithdraw,
 		"max_withdraw":    setting.MaxWithdraw,
 		"withdraw_charge": setting.WithdrawCharge,
+		"auto_withdraw":   setting.AutoWithdraw,
 		"maintenance":     setting.Maintenance,
 		"closed_register": setting.ClosedRegister,
 		"link_cs":         setting.LinkCS,

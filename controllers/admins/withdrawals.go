@@ -169,6 +169,48 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var setting models.Setting
+	if err := database.DB.First(&setting).Error; err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal mengambil informasi aplikasi",
+		})
+		return
+	}
+
+	// Check auto_withdraw setting
+	if !setting.AutoWithdraw {
+		// Manual withdrawal - set status to Success directly
+		tx := database.DB.Begin()
+		
+		// Update withdrawal status
+		withdrawal.Status = "Success"
+		if err := tx.Save(&withdrawal).Error; err != nil {
+			tx.Rollback()
+			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+				Success: false,
+				Message: "Gagal memperbarui status penarikan",
+			})
+			return
+		}
+		
+		// Update related transaction status
+		if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Success").Error; err != nil {
+			tx.Rollback()
+			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal memperbarui status transaksi"})
+			return
+		}
+		
+		if err := tx.Commit().Error; err != nil {
+			utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal menyimpan perubahan"})
+			return
+		}
+
+		utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "Penarikan berhasil disetujui (transfer manual)"})
+		return
+	}
+
+	// Auto withdrawal using KYTAPAY
 	// Load associated bank account and bank
 	var ba models.BankAccount
 	if err := database.DB.Preload("Bank").First(&ba, withdrawal.BankAccountID).Error; err != nil {
@@ -236,7 +278,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		"amount":       int64(withdrawal.FinalAmount),
 		"description":  description,
 		"destination": map[string]interface{}{
-			"code":    bankCode,
+			"code":           bankCode,
 			"account_number": accountNumber,
 			"account_name":   accountName,
 		},
@@ -289,7 +331,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "OK"})
+	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "Penarikan berhasil diproses otomatis"})
 }
 
 func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {

@@ -48,9 +48,21 @@ func main() {
 	// Auto-migrate only in development to avoid accidental production schema changes
 	if strings.ToLower(os.Getenv("ENV")) == "development" {
 		log.Println("Running in development mode - performing auto-migration")
-		if err := db.AutoMigrate(&models.Admin{}, &models.RefreshToken{}, &models.UserSpin{}, &models.Setting{ClosedRegister: false, Maintenance: false}, &models.Payment{}, &models.PaymentSettings{}); err != nil {
+		if err := db.AutoMigrate(
+			&models.Admin{}, 
+			&models.RefreshToken{}, 
+			&models.User{},
+			&models.Category{},
+			&models.Product{},
+			&models.Investment{},
+			&models.UserSpin{}, 
+			&models.Setting{ClosedRegister: false, Maintenance: false}, 
+			&models.Payment{}, 
+			&models.PaymentSettings{},
+		); err != nil {
 			log.Fatalf("failed to migrate database: %v", err)
 		}
+		log.Println("Auto-migration completed successfully")
 	} else {
 		log.Println("Running in production mode - skipping auto-migration")
 	}

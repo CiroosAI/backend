@@ -12,6 +12,7 @@ type User struct {
 	Balance          float64   `gorm:"type:decimal(15,2);default:0" json:"balance"`
 	Level            *uint     `gorm:"column:level;default:0" json:"level"`
 	TotalInvest      float64   `gorm:"column:total_invest;type:decimal(15,2);default:0" json:"total_invest"`
+	TotalInvestVIP   float64   `gorm:"column:total_invest_vip;type:decimal(15,2);default:0" json:"total_invest_vip"`
 	SpinTicket       *uint     `gorm:"column:spin_ticket;default:0" json:"spin_ticket"`
 	Status           string    `gorm:"type:enum('Active','Inactive','Suspend');default:'Active'" json:"status"`
 	InvestmentStatus string    `gorm:"type:enum('Active','Inactive');default:'Inactive'" json:"investment_status"`

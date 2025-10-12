@@ -21,8 +21,9 @@ type InvestmentResponse struct {
 	Phone         string  `json:"phone"`
 	ProductID     uint    `json:"product_id"`
 	ProductName   string  `json:"product_name"`
+	CategoryID    uint    `json:"category_id"`
+	CategoryName  string  `json:"category_name"`
 	Amount        float64 `json:"amount"`
-	Percentage    float64 `json:"percentage"`
 	Duration      int     `json:"duration"`
 	DailyProfit   float64 `json:"daily_profit"`
 	TotalPaid     int     `json:"total_paid"`
@@ -54,7 +55,8 @@ func GetInvestments(w http.ResponseWriter, r *http.Request) {
 	// Start query
 	db := database.DB
 	query := db.Model(&models.Investment{}).
-		Joins("JOIN products ON investments.product_id = products.id")
+		Joins("JOIN products ON investments.product_id = products.id").
+		Joins("JOIN categories ON investments.category_id = categories.id")
 
 	// Apply filters
 	if productID != "" {
@@ -67,14 +69,15 @@ func GetInvestments(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("investments.order_id LIKE ?", "%"+orderID+"%")
 	}
 
-	// Get investments with product details
+	// Get investments with product and category details
 	type InvestmentWithProduct struct {
 		models.Investment
-		ProductName string
+		ProductName  string
+		CategoryName string
 	}
 
 	var investments []InvestmentWithProduct
-	query.Select("investments.*, products.name as product_name").
+	query.Select("investments.*, products.name as product_name, categories.name as category_name").
 		Offset(offset).
 		Limit(limit).
 		Order("investments.created_at DESC").
@@ -110,8 +113,9 @@ func GetInvestments(w http.ResponseWriter, r *http.Request) {
 			Phone:         usersByID[inv.UserID].Number,
 			ProductID:     inv.ProductID,
 			ProductName:   inv.ProductName,
+			CategoryID:    inv.CategoryID,
+			CategoryName:  inv.CategoryName,
 			Amount:        inv.Amount,
-			Percentage:    inv.Percentage,
 			Duration:      inv.Duration,
 			DailyProfit:   inv.DailyProfit,
 			TotalPaid:     inv.TotalPaid,
@@ -142,16 +146,18 @@ func GetInvestmentDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get investment with product details
+	// Get investment with product and category details
 	type InvestmentWithProduct struct {
 		models.Investment
-		ProductName string
+		ProductName  string
+		CategoryName string
 	}
 
 	var investment InvestmentWithProduct
 	err = database.DB.Model(&models.Investment{}).
 		Joins("JOIN products ON investments.product_id = products.id").
-		Select("investments.*, products.name as product_name").
+		Joins("JOIN categories ON investments.category_id = categories.id").
+		Select("investments.*, products.name as product_name, categories.name as category_name").
 		Where("investments.id = ?", id).
 		First(&investment).Error
 
@@ -181,8 +187,9 @@ func GetInvestmentDetail(w http.ResponseWriter, r *http.Request) {
 		Phone:         user.Number,
 		ProductID:     investment.ProductID,
 		ProductName:   investment.ProductName,
+		CategoryID:    investment.CategoryID,
+		CategoryName:  investment.CategoryName,
 		Amount:        investment.Amount,
-		Percentage:    investment.Percentage,
 		Duration:      investment.Duration,
 		DailyProfit:   investment.DailyProfit,
 		TotalPaid:     investment.TotalPaid,

@@ -10,6 +10,7 @@ type Setting struct {
 	MinWithdraw    float64 `json:"min_withdraw"`
 	MaxWithdraw    float64 `json:"max_withdraw"`
 	WithdrawCharge float64 `json:"withdraw_charge"`
+	AutoWithdraw   bool    `json:"auto_withdraw"`
 	Maintenance    bool    `json:"maintenance"`
 	ClosedRegister bool    `json:"closed_register"`
 	LinkCS         string  `json:"link_cs"`
@@ -19,7 +20,7 @@ type Setting struct {
 
 func GetSetting(db *sql.DB) (*Setting, error) {
 	setting := &Setting{}
-	row := db.QueryRow("SELECT id, name, company, logo, min_withdraw, max_withdraw, withdraw_charge, maintenance, closed_register, link_cs, link_group, link_app FROM settings LIMIT 1")
+	row := db.QueryRow("SELECT id, name, company, logo, min_withdraw, max_withdraw, withdraw_charge, auto_withdraw, maintenance, closed_register, link_cs, link_group, link_app FROM settings LIMIT 1")
 	err := row.Scan(
 		&setting.ID,
 		&setting.Name,
@@ -28,6 +29,7 @@ func GetSetting(db *sql.DB) (*Setting, error) {
 		&setting.MinWithdraw,
 		&setting.MaxWithdraw,
 		&setting.WithdrawCharge,
+		&setting.AutoWithdraw,
 		&setting.Maintenance,
 		&setting.ClosedRegister,
 		&setting.LinkCS,

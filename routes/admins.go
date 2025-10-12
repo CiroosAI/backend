@@ -44,9 +44,19 @@ func SetAdminRoutes(api *mux.Router) {
 	adminRouter.Handle("/investments/{id:[0-9]+}", http.HandlerFunc(admins.GetInvestmentDetail)).Methods(http.MethodGet)
 	adminRouter.Handle("/investments/{id:[0-9]+}/status", http.HandlerFunc(admins.UpdateInvestmentStatus)).Methods(http.MethodPut)
 
+	// Category management
+	adminRouter.Handle("/categories", http.HandlerFunc(admins.ListCategoriesHandler)).Methods(http.MethodGet)
+	adminRouter.Handle("/categories", http.HandlerFunc(admins.CreateCategoryHandler)).Methods(http.MethodPost)
+	adminRouter.Handle("/categories/{id:[0-9]+}", http.HandlerFunc(admins.GetCategoryHandler)).Methods(http.MethodGet)
+	adminRouter.Handle("/categories/{id:[0-9]+}", http.HandlerFunc(admins.UpdateCategoryHandler)).Methods(http.MethodPut)
+	adminRouter.Handle("/categories/{id:[0-9]+}", http.HandlerFunc(admins.DeleteCategoryHandler)).Methods(http.MethodDelete)
+
 	// Product management
-	adminRouter.Handle("/products", http.HandlerFunc(admins.GetProducts)).Methods(http.MethodGet)
-	adminRouter.Handle("/products/{id:[0-9]+}", http.HandlerFunc(admins.UpdateProduct)).Methods(http.MethodPut)
+	adminRouter.Handle("/products", http.HandlerFunc(admins.ListProductsHandler)).Methods(http.MethodGet)
+	adminRouter.Handle("/products", http.HandlerFunc(admins.CreateProductHandler)).Methods(http.MethodPost)
+	adminRouter.Handle("/products/{id:[0-9]+}", http.HandlerFunc(admins.GetProductHandler)).Methods(http.MethodGet)
+	adminRouter.Handle("/products/{id:[0-9]+}", http.HandlerFunc(admins.UpdateProductHandler)).Methods(http.MethodPut)
+	adminRouter.Handle("/products/{id:[0-9]+}", http.HandlerFunc(admins.DeleteProductHandler)).Methods(http.MethodDelete)
 
 	//Withdrawal management
 	adminRouter.Handle("/withdrawals", http.HandlerFunc(admins.GetWithdrawals)).Methods(http.MethodGet)
