@@ -711,6 +711,11 @@ func CronDailyReturnsHandler(w http.ResponseWriter, r *http.Request) {
 			paid := inv.TotalPaid + 1
 			returned := round3(inv.TotalReturned + amount)
 
+			var product models.Product
+			if err := tx.Where("id = ?", inv.ProductID).First(&product).Error; err != nil {
+				return err
+			}
+
 			// For locked (Monitor) category: Don't pay to balance until completion, just accumulate
 			// For unlocked (Insight/AutoPilot): Pay to balance immediately
 			if category.ProfitType == "unlocked" {
@@ -720,7 +725,7 @@ func CronDailyReturnsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 
 				orderID := utils.GenerateOrderID(inv.UserID)
-				msg := fmt.Sprintf("Profit investasi #%d", inv.ID)
+				msg := fmt.Sprintf("Profit investasi produk %s", product.Name)
 				trx := models.Transaction{
 					UserID:          inv.UserID,
 					Amount:          amount,
@@ -745,10 +750,34 @@ func CronDailyReturnsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 
 				orderID := utils.GenerateOrderID(inv.UserID)
-				msg := fmt.Sprintf("Total profit investasi #%d selesai", inv.ID)
+				msg := fmt.Sprintf("Total profit investasi produk %s selesai",product.Name)
 				trx := models.Transaction{
 					UserID:          inv.UserID,
 					Amount:          totalProfit,
+					Charge:          0,
+					OrderID:         orderID,
+					TransactionFlow: "debit",
+					TransactionType: "return",
+					Message:         &msg,
+					Status:          "Success",
+				}
+				if err := tx.Create(&trx).Error; err != nil {
+					return err
+				}
+			}
+
+			// Back Amount to User
+			if paid >= inv.Duration {
+				newBalance := round3(user.Balance + inv.Amount)
+				if err := tx.Model(&user).Update("balance", newBalance).Error; err != nil {
+					return err
+				}
+
+				orderID := utils.GenerateOrderID(inv.UserID)
+				msg := fmt.Sprintf("Pengembalian modal investasi produk %s", product.Name)
+				trx := models.Transaction{
+					UserID:          inv.UserID,
+					Amount:          inv.Amount,
 					Charge:          0,
 					OrderID:         orderID,
 					TransactionFlow: "debit",
