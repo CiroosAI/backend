@@ -67,16 +67,28 @@ CREATE TABLE `banks` (
 --
 
 INSERT INTO `banks` (`id`, `name`, `code`, `status`) VALUES
-(1, 'Bank Rakyat Indonesia', 'BRI', 'Active'),
-(2, 'Bank Central Asia', 'BCA', 'Active'),
+(1, 'Bank Central Asia', 'BCA', 'Active'),
+(2, 'Bank Rakyat Indonesia', 'BRI', 'Active'),
 (3, 'Bank Negara Indonesia', 'BNI', 'Active'),
-(4, 'Bank Mandiri', 'MANDIRI', 'Active'),
-(5, 'Bank Permata', 'PERMATA', 'Active'),
-(6, 'Bank CIMB Niaga', 'BNC', 'Active'),
-(7, 'Dana', 'DANA', 'Active'),
-(8, 'GoPay', 'GOPAY', 'Active'),
-(9, 'OVO', 'OVO', 'Active'),
-(10, 'ShopeePay', 'SHOPEEPAY', 'Active');
+(4, 'Bank Syariah Indonesia', 'BSI', 'Active'),
+(5, 'Bank Tabungan Negara', 'BTN', 'Active'),
+(6, 'Bank Mandiri', 'MANDIRI', 'Active'),
+(7, 'Bank Danamon', 'DANAMON', 'Active'),
+(8, 'Bank Permata', 'PERMATA', 'Active'),
+(9, 'Bank CIMB Niaga', 'CIMB', 'Active'),
+(10, 'Bank OCBC NISP', 'OCBC', 'Active'),
+(11, 'Bank Mega', 'MEGA', 'Active'),
+(12, 'Bank KB Bukopin', 'BUKOPIN', 'Active'),
+(13, 'Bank Sahabat Sampoerna', 'BSS', 'Active'),
+(14, 'Bank Neo Commerce', 'BNC', 'Active'),
+(15, 'Bank Jago', 'JAGO', 'Active'),
+(16, 'SeaBank', 'SEABANK', 'Active'),
+(17, 'Allo Bank', 'ALLO', 'Active'),
+(18, 'Dana', 'DANA', 'Active'),
+(19, 'GoPay', 'GOPAY', 'Active'),
+(20, 'OVO', 'OVO', 'Active'),
+(21, 'ShopeePay', 'SHOPEEPAY', 'Active'),
+(22, 'LinkAja', 'LINKAJA', 'Active');
 
 -- --------------------------------------------------------
 
