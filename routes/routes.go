@@ -7,6 +7,7 @@ import (
 
 	"project/controllers"
 	"project/controllers/users"
+	"project/controllers/admins"
 	"project/middleware"
 
 	"github.com/gorilla/handlers"
@@ -45,6 +46,8 @@ func InitRouter() *mux.Router {
 
 	// Kytapay webhook (no auth, whitelist, sliding window)
 	api.Handle("/payments/kyta/webhook", webhookLimiter.Middleware(http.HandlerFunc(users.KytaWebhookHandler))).Methods(http.MethodPost)
+
+	api.Handle("/payouts/kyta/webhook", webhookLimiter.Middleware(http.HandlerFunc(admins.KytaPayoutWebhookHandler))).Methods(http.MethodPost)
 
 	// Example protected endpoint using JWT middleware
 	api.Handle("/ping", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

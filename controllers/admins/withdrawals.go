@@ -434,3 +434,96 @@ func RejectWithdrawal(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+// POST /api/payouts/kyta/webhook
+func KytaPayoutWebhookHandler(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		CallbackCode    string `json:"callback_code"`
+		CallbackMessage string `json:"callback_message"`
+		CallbackData    struct {
+			ID          string `json:"id"`
+			ReferenceID string `json:"reference_id"`
+			Amount      int64  `json:"amount"`
+			Status      string `json:"status"`
+			PayoutData  struct {
+				Code          string `json:"code"`
+				AccountNumber string `json:"account_number"`
+				AccountName   string `json:"account_name"`
+			} `json:"payout_data"`
+			MerchantURL struct {
+				NotifyURL string `json:"notify_url"`
+			} `json:"merchant_url"`
+			CallbackTime string `json:"callback_time"`
+		} `json:"callback_data"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Invalid JSON"})
+		return
+	}
+
+	referenceID := payload.CallbackData.ReferenceID
+	status := payload.CallbackData.Status
+
+	if referenceID == "" {
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "reference_id kosong"})
+		return
+	}
+
+	// If status is Success, ignore the callback
+	if status == "Success" {
+		utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "Ignore"})
+		return
+	}
+
+	// If status is not Success, set withdrawal status back to Pending
+	db := database.DB
+	var withdrawal models.Withdrawal
+	if err := db.Where("order_id = ?", referenceID).First(&withdrawal).Error; err != nil {
+		utils.WriteJSON(w, http.StatusNotFound, utils.APIResponse{Success: false, Message: "Penarikan tidak ditemukan"})
+		return
+	}
+
+	// Start transaction to update withdrawal and transaction status back to Pending
+	tx := db.Begin()
+	
+	// Update withdrawal status to Pending
+	withdrawal.Status = "Pending"
+	if err := tx.Save(&withdrawal).Error; err != nil {
+		tx.Rollback()
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal memperbarui status penarikan",
+		})
+		return
+	}
+
+	// Update related transaction status to Pending
+	if err := tx.Model(&models.Transaction{}).
+		Where("order_id = ?", withdrawal.OrderID).
+		Update("status", "Pending").Error; err != nil {
+		tx.Rollback()
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal memperbarui status transaksi",
+		})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal menyimpan perubahan",
+		})
+		return
+	}
+
+	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{
+		Success: true,
+		Message: "Status penarikan dikembalikan ke Pending",
+		Data: map[string]interface{}{
+			"order_id": withdrawal.OrderID,
+			"status":   withdrawal.Status,
+		},
+	})
+}
