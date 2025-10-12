@@ -16,9 +16,6 @@ func SetAdminRoutes(api *mux.Router) {
 
 	// Public admin routes
 	api.Handle("/admin/login", adminLoginLimiter.Middleware(http.HandlerFunc(admins.Login))).Methods(http.MethodPost)
-	
-	// KYTAPAY webhook (public - no auth required)
-	api.Handle("/payouts/kyta/webhook", http.HandlerFunc(admins.KytaPayoutWebhookHandler)).Methods(http.MethodPost)
 
 	// Protected admin routes
 	adminRouter := api.PathPrefix("/admin").Subrouter()
