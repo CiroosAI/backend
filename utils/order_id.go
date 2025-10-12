@@ -23,7 +23,7 @@ func GenerateOrderID(userID uint) string {
 
 	randPart := seededRand.Intn(900) + 100
 
-	return fmt.Sprintf("INV-%06d%03d%d", nanoPart, randPart, userID)
+	return fmt.Sprintf("CRS-%06d%03d%d", nanoPart, randPart, userID)
 }
 
 func GenerateReferenceID(userID uint) string {
