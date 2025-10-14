@@ -87,6 +87,7 @@ services:
 
       # Cron
       CRON_KEY: ${CRON_KEY}
+      SF_API_KEY: ${SF_API_KEY}
       
       # S3 (if using file uploads)
       S3_ENDPOINT: ${S3_ENDPOINT}

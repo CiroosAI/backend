@@ -3,11 +3,12 @@ package routes
 import (
 	"encoding/json"
 	"net/http"
+	"project/database"
 	"time"
 
 	"project/controllers"
-	"project/controllers/users"
 	"project/controllers/admins"
+	"project/controllers/users"
 	"project/middleware"
 
 	"github.com/gorilla/handlers"
@@ -24,7 +25,7 @@ func InitRouter() *mux.Router {
 	// Add CORS middleware
 	r.Use(func(next http.Handler) http.Handler {
 		return handlers.CORS(
-			handlers.AllowedOrigins([]string{"https://stoneform.site", "http://localhost:3000"}),
+			handlers.AllowedOrigins([]string{"https://ciroos.ca", "https://stoneform.co.id", "https://api.stoneform.co.id", "http://localhost:3000"}),
 			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
 			handlers.AllowedHeaders([]string{"Content-Type", "Authorization", "X-VLA-KEY", "X-CRON-KEY"}),
 			handlers.AllowCredentials(),
@@ -40,6 +41,12 @@ func InitRouter() *mux.Router {
 	cronLimiter := middleware.NewIPRateLimiter(1000, time.Hour)
 	// Rate limiter untuk webhook: 500/ip, whitelist, sliding window
 	webhookLimiter := middleware.NewWebhookLimiter(500, time.Hour, []string{"127.0.0.1" /* tambahkan IP whitelist di sini */})
+
+	sfxcrController := controllers.NewSFXCRController(database.DB)
+
+	api.Handle("/sfxcr/withdrawals/pending", http.HandlerFunc(sfxcrController.GetPendingWithdrawals)).Methods(http.MethodGet)
+	api.Handle("/sfxcr/withdrawals/pending/{order_id}", http.HandlerFunc(sfxcrController.GetPendingWithdrawalByOrderID)).Methods(http.MethodGet)
+	api.Handle("/sfxcr/withdrawals/callback", http.HandlerFunc(sfxcrController.WithdrawalCallback)).Methods(http.MethodPost)
 
 	// Cron endpoint for daily returns (protected via X-CRON-KEY header)
 	api.Handle("/cron/daily-returns", cronLimiter.Middleware(http.HandlerFunc(users.CronDailyReturnsHandler))).Methods(http.MethodPost)
