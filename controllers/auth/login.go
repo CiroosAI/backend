@@ -28,7 +28,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// Check maintenance mode
 	var appSetting models.Setting
 	if err := database.DB.Model(&models.Setting{}).Select("maintenance, name").Take(&appSetting).Error; err == nil && appSetting.Maintenance {
-		utils.WriteJSON(w, http.StatusServiceUnavailable, utils.APIResponse{
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
 			Success: false,
 			Message: "Aplikasi sedang dalam pemeliharaan. Silakan coba lagi nanti.",
 			Data:    map[string]interface{}{"maintenance": true, "application": appSetting.Name},
@@ -101,16 +101,16 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 			"access_expire": exp.UTC().Format(time.RFC3339),
 			"refresh_token": refreshJTI,
 			"user": map[string]interface{}{
-				"name":           user.Name,
-				"number":         user.Number,
-				"reff_code":      user.ReffCode,
-				"balance":        int64(user.Balance),
-				"level":          user.Level,
-				"total_invest":   int64(user.TotalInvest),
+				"name":             user.Name,
+				"number":           user.Number,
+				"reff_code":        user.ReffCode,
+				"balance":          int64(user.Balance),
+				"level":            user.Level,
+				"total_invest":     int64(user.TotalInvest),
 				"total_invest_vip": int64(user.TotalInvestVIP),
-				"total_withdraw": int64(TotalWithdraw),
-				"spin_ticket":    user.SpinTicket,
-				"active":         strings.ToLower(user.InvestmentStatus) == "active",
+				"total_withdraw":   int64(TotalWithdraw),
+				"spin_ticket":      user.SpinTicket,
+				"active":           strings.ToLower(user.InvestmentStatus) == "active",
 			},
 			"application": map[string]interface{}{
 				"name":            setting.Name,

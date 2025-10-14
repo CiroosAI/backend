@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -142,7 +143,7 @@ func GetActiveInvestmentsHandler(w http.ResponseWriter, r *http.Request) {
 	utils.WriteJSON(w, http.StatusOK, utils.APIResponse{Success: true, Message: "Successfully", Data: resp})
 }
 
-// POST /api/users/investments
+// POST /api/users/investments - FIXED VERSION
 func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 	var req CreateInvestmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -181,13 +182,11 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if product category exists
 	if product.Category == nil {
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Kategori produk tidak valid"})
 		return
 	}
 
-	// Check VIP requirement - user level must be >= product required_vip
 	var user models.User
 	if err := db.Select("level").Where("id = ?", uid).First(&user).Error; err != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Terjadi kesalahan, coba lagi"})
@@ -205,7 +204,6 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check purchase limit - only count paid investments (Running/Completed)
 	if product.PurchaseLimit > 0 {
 		var purchaseCount int64
 		if err := db.Model(&models.Investment{}).
@@ -236,17 +234,16 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpClient := &http.Client{Timeout: 15 * time.Second}
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	orderID := utils.GenerateOrderID(uid)
 	referenceID := orderID
 
-	accessToken, err := getKytaAccessToken(r.Context(), httpClient, kytapayBase, kytapayClientID, kytapayClientSecret)
+	accessToken, errMsg, err := getKytaAccessTokenSafe(r.Context(), httpClient, kytapayBase, kytapayClientID, kytapayClientSecret)
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Gagal mendapatkan token akses"})
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: errMsg})
 		return
 	}
 
-	// Use product's fixed amount
 	amount := product.Amount
 
 	if method == "QRIS" && amount > 10000000 {
@@ -261,21 +258,20 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	var payResp *KytaPaymentResponse
 	if method == "QRIS" {
-		payResp, err = createKytaQRIS(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), notifyURL, successURL, failedURL)
+		payResp, errMsg, err = createKytaQRISSafe(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), notifyURL, successURL, failedURL)
 	} else {
-		payResp, err = createKytaVA(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), channel, notifyURL, successURL, failedURL)
+		payResp, errMsg, err = createKytaVASafe(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), channel, notifyURL, successURL, failedURL)
 	}
 
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Gagal memanggil layanan pembayaran"})
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: errMsg})
 		return
 	}
 	if payResp == nil {
-		utils.WriteJSON(w, http.StatusBadGateway, utils.APIResponse{Success: false, Message: "Gagal mendapatkan jawaban dari layanan pembayaran"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal mendapatkan jawaban dari layanan pembayaran"})
 		return
 	}
 
-	// Use product's fixed daily profit
 	daily := product.DailyProfit
 
 	inv := models.Investment{
@@ -750,7 +746,7 @@ func CronDailyReturnsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 
 				orderID := utils.GenerateOrderID(inv.UserID)
-				msg := fmt.Sprintf("Total profit investasi produk %s selesai",product.Name)
+				msg := fmt.Sprintf("Total profit investasi produk %s selesai", product.Name)
 				trx := models.Transaction{
 					UserID:          inv.UserID,
 					Amount:          totalProfit,
@@ -821,20 +817,19 @@ func parseTimeFlexible(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse time: %s", s)
 }
 
-func getKytaAccessToken(ctx context.Context, client *http.Client, baseURL, clientID, clientSecret string) (string, error) {
+// FIXED: getKytaAccessToken with proper error handling
+func getKytaAccessTokenSafe(ctx context.Context, client *http.Client, baseURL, clientID, clientSecret string) (string, string, error) {
 	url := strings.TrimRight(baseURL, "/") + "/access-token"
 
 	credentials := clientID + ":" + clientSecret
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(credentials))
 
-	payload := map[string]string{
-		"grant_type": "client_credentials",
-	}
+	payload := map[string]string{"grant_type": "client_credentials"}
 	body, _ := json.Marshal(payload)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", "Gagal membuat request token", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -843,27 +838,50 @@ func getKytaAccessToken(ctx context.Context, client *http.Client, baseURL, clien
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", "Koneksi ke layanan pembayaran gagal", err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to get access token, status: %d", resp.StatusCode)
+	// Baca response body terlebih dahulu
+	tokenBodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return "", "Gagal membaca response token", readErr
 	}
 
+	// Parse response
 	var tokenResp KytaAccessTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", err
+	parseErr := json.Unmarshal(tokenBodyBytes, &tokenResp)
+
+	// Cek HTTP status
+	if resp.StatusCode != http.StatusOK {
+		errorMsg := "Gagal mendapatkan token pembayaran"
+		if parseErr == nil && tokenResp.ResponseMessage != "" {
+			errorMsg = tokenResp.ResponseMessage
+		} else if len(tokenBodyBytes) > 0 && len(tokenBodyBytes) < 500 {
+			errorMsg = string(tokenBodyBytes)
+		}
+		return "", errorMsg, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	// Cek parsing error setelah HTTP OK
+	if parseErr != nil {
+		return "", "Gagal parsing response token", parseErr
+	}
+
+	// Cek response code
+	if tokenResp.ResponseCode != "" && tokenResp.ResponseCode != "2000100" && tokenResp.ResponseCode != "200" && !strings.HasPrefix(tokenResp.ResponseCode, "200") {
+		return "", tokenResp.ResponseMessage, errors.New("kytapay error")
 	}
 
 	if tokenResp.ResponseData.AccessToken == "" {
-		return "", errors.New("access token is empty")
+		return "", "Token pembayaran kosong", errors.New("empty token")
 	}
 
-	return tokenResp.ResponseData.AccessToken, nil
+	return tokenResp.ResponseData.AccessToken, "", nil
 }
 
-func createKytaQRIS(ctx context.Context, client *http.Client, baseURL, accessToken, referenceID string, amount int64, notifyURL, successURL, failedURL string) (*KytaPaymentResponse, error) {
+// FIXED: createKytaQRIS with proper error handling
+func createKytaQRISSafe(ctx context.Context, client *http.Client, baseURL, accessToken, referenceID string, amount int64, notifyURL, successURL, failedURL string) (*KytaPaymentResponse, string, error) {
 	url := strings.TrimRight(baseURL, "/") + "/payments/create/qris"
 
 	payload := map[string]interface{}{
@@ -878,7 +896,7 @@ func createKytaQRIS(ctx context.Context, client *http.Client, baseURL, accessTok
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, "Gagal membuat request QRIS", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -887,25 +905,46 @@ func createKytaQRIS(ctx context.Context, client *http.Client, baseURL, accessTok
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "Koneksi ke layanan pembayaran gagal", err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		respBody := new(bytes.Buffer)
-		respBody.ReadFrom(resp.Body)
-		return nil, fmt.Errorf("failed to create QRIS payment, status: %d, body: %s", resp.StatusCode, respBody.String())
+	// Baca response body terlebih dahulu
+	paymentBodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, "Gagal membaca response pembayaran", readErr
 	}
 
+	// Parse response
 	var paymentResp KytaPaymentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&paymentResp); err != nil {
-		return nil, err
+	parseErr := json.Unmarshal(paymentBodyBytes, &paymentResp)
+
+	// Cek HTTP status
+	if resp.StatusCode != http.StatusOK {
+		errorMsg := "Gagal membuat pembayaran QRIS"
+		if parseErr == nil && paymentResp.ResponseMessage != "" {
+			errorMsg = paymentResp.ResponseMessage
+		} else if len(paymentBodyBytes) > 0 && len(paymentBodyBytes) < 500 {
+			errorMsg = string(paymentBodyBytes)
+		}
+		return nil, errorMsg, fmt.Errorf("status %d", resp.StatusCode)
 	}
 
-	return &paymentResp, nil
+	// Cek parsing error setelah HTTP OK
+	if parseErr != nil {
+		return nil, "Gagal parsing response pembayaran", parseErr
+	}
+
+	// Cek response code
+	if paymentResp.ResponseCode != "" && paymentResp.ResponseCode != "2001100" && paymentResp.ResponseCode != "200" && !strings.HasPrefix(paymentResp.ResponseCode, "200") {
+		return nil, paymentResp.ResponseMessage, errors.New("kytapay error")
+	}
+
+	return &paymentResp, "", nil
 }
 
-func createKytaVA(ctx context.Context, client *http.Client, baseURL, accessToken, referenceID string, amount int64, bankCode, notifyURL, successURL, failedURL string) (*KytaPaymentResponse, error) {
+// FIXED: createKytaVA with proper error handling
+func createKytaVASafe(ctx context.Context, client *http.Client, baseURL, accessToken, referenceID string, amount int64, bankCode, notifyURL, successURL, failedURL string) (*KytaPaymentResponse, string, error) {
 	url := strings.TrimRight(baseURL, "/") + "/payments/create/va"
 
 	payload := map[string]interface{}{
@@ -921,7 +960,7 @@ func createKytaVA(ctx context.Context, client *http.Client, baseURL, accessToken
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, "Gagal membuat request VA", err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -930,22 +969,42 @@ func createKytaVA(ctx context.Context, client *http.Client, baseURL, accessToken
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "Koneksi ke layanan pembayaran gagal", err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		respBody := new(bytes.Buffer)
-		respBody.ReadFrom(resp.Body)
-		return nil, fmt.Errorf("failed to create VA payment, status: %d, body: %s", resp.StatusCode, respBody.String())
+	// Baca response body terlebih dahulu
+	paymentBodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, "Gagal membaca response pembayaran", readErr
 	}
 
+	// Parse response
 	var paymentResp KytaPaymentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&paymentResp); err != nil {
-		return nil, err
+	parseErr := json.Unmarshal(paymentBodyBytes, &paymentResp)
+
+	// Cek HTTP status
+	if resp.StatusCode != http.StatusOK {
+		errorMsg := "Gagal membuat pembayaran Virtual Account"
+		if parseErr == nil && paymentResp.ResponseMessage != "" {
+			errorMsg = paymentResp.ResponseMessage
+		} else if len(paymentBodyBytes) > 0 && len(paymentBodyBytes) < 500 {
+			errorMsg = string(paymentBodyBytes)
+		}
+		return nil, errorMsg, fmt.Errorf("status %d", resp.StatusCode)
 	}
 
-	return &paymentResp, nil
+	// Cek parsing error setelah HTTP OK
+	if parseErr != nil {
+		return nil, "Gagal parsing response pembayaran", parseErr
+	}
+
+	// Cek response code
+	if paymentResp.ResponseCode != "" && paymentResp.ResponseCode != "2001200" && paymentResp.ResponseCode != "200" && !strings.HasPrefix(paymentResp.ResponseCode, "200") {
+		return nil, paymentResp.ResponseMessage, errors.New("kytapay error")
+	}
+
+	return &paymentResp, "", nil
 }
 
 func round3(f float64) float64 {

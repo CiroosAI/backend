@@ -43,7 +43,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := database.DB.Model(&models.Setting{}).Select("maintenance, name").Take(&appSetting).Error; err == nil && appSetting.Maintenance {
-		utils.WriteJSON(w, http.StatusServiceUnavailable, utils.APIResponse{
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
 			Success: false,
 			Message: "Aplikasi sedang dalam pemeliharaan. Silakan coba lagi nanti.",
 			Data:    map[string]interface{}{"maintenance": true, "application": appSetting.Name},
@@ -187,16 +187,16 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			"access_expire": exp.UTC().Format(time.RFC3339),
 			"refresh_token": refreshJTI,
 			"user": map[string]interface{}{
-				"name":           newUser.Name,
-				"number":         newUser.Number,
-				"reff_code":      newUser.ReffCode,
-				"balance":        int64(newUser.Balance),
-				"level":          newUser.Level,
-				"total_invest":   int64(newUser.TotalInvest),
+				"name":             newUser.Name,
+				"number":           newUser.Number,
+				"reff_code":        newUser.ReffCode,
+				"balance":          int64(newUser.Balance),
+				"level":            newUser.Level,
+				"total_invest":     int64(newUser.TotalInvest),
 				"total_invest_vip": int64(newUser.TotalInvestVIP),
-				"total_withdraw": int64(TotalWithdraw),
-				"spin_ticket":    newUser.SpinTicket,
-				"active":         strings.ToLower(newUser.InvestmentStatus) == "active",
+				"total_withdraw":   int64(TotalWithdraw),
+				"spin_ticket":      newUser.SpinTicket,
+				"active":           strings.ToLower(newUser.InvestmentStatus) == "active",
 			},
 			"application": map[string]interface{}{
 				"name":            setting.Name,
