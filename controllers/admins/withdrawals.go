@@ -208,7 +208,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto withdrawal using KYTAPAY
+	// Auto withdrawal using KLIKPAY/KYTAPAY
 	var ba models.BankAccount
 	if err := database.DB.Preload("Bank").First(&ba, withdrawal.BankAccountID).Error; err != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal mengambil rekening"})
@@ -234,21 +234,33 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 	description := fmt.Sprintf("Penarikan # %s", withdrawal.OrderID)
 	notifyURL := os.Getenv("CALLBACK_WITHDRAW")
 
-	// 1) Get access token
-	clientID := os.Getenv("KYTAPAY_CLIENT_ID")
-	clientSecret := os.Getenv("KYTAPAY_CLIENT_SECRET")
+	// Get payment gateway configuration
+	apiURL := os.Getenv("KLIKPAY_BASE_URL")
+	// Trim trailing slash untuk konsistensi
+	apiURL = strings.TrimRight(apiURL, "/")
+
+	clientID := os.Getenv("KLIKPAY_CLIENT_ID")
+	clientSecret := os.Getenv("KLIKPAY_CLIENT_SECRET")
+
 	if clientID == "" || clientSecret == "" {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "KYTAPAY credentials missing"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Konfigurasi payment gateway tidak lengkap",
+		})
 		return
 	}
 
+	// 1) Get access token
 	basic := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + clientSecret))
 	atkReqBody := map[string]string{"grant_type": "client_credentials"}
 	atkJSON, _ := json.Marshal(atkReqBody)
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.kytapay.com/v2/access-token", bytes.NewReader(atkJSON))
+	req, err := http.NewRequest(http.MethodPost, apiURL+"/access-token", bytes.NewReader(atkJSON))
 	if err != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal membuat request token"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal membuat request token",
+		})
 		return
 	}
 
@@ -258,19 +270,25 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Koneksi ke KYTAPAY gagal: " + err.Error()})
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
+			Success: false,
+			Message: "Koneksi ke payment gateway gagal: " + err.Error(),
+		})
 		return
 	}
 	defer resp.Body.Close()
 
-	// KUNCI: Selalu baca response body terlebih dahulu
+	// Read response body terlebih dahulu
 	tokenBodyBytes, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal membaca response token"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal membaca response token",
+		})
 		return
 	}
 
-	// Parse response terlebih dahulu sebelum cek status
+	// Parse response
 	var atkResp struct {
 		ResponseCode    string `json:"response_code"`
 		ResponseMessage string `json:"response_message"`
@@ -283,12 +301,12 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 
 	parseErr := json.Unmarshal(tokenBodyBytes, &atkResp)
 
-	// Cek HTTP status code dari KYTAPAY
+	// Cek HTTP status code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errorMsg := "KYTAPAY token error"
+		errorMsg := "Gagal mendapatkan token pembayaran"
 		if parseErr == nil && atkResp.ResponseMessage != "" {
 			errorMsg = atkResp.ResponseMessage
-		} else if len(tokenBodyBytes) > 0 {
+		} else if len(tokenBodyBytes) > 0 && len(tokenBodyBytes) < 500 {
 			errorMsg = string(tokenBodyBytes)
 		}
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
@@ -298,28 +316,35 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cek jika parsing gagal setelah HTTP status OK
+	// Cek parsing error
 	if parseErr != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
 			Success: false,
-			Message: "Gagal parsing response KYTAPAY: " + string(tokenBodyBytes),
+			Message: "Gagal parsing response token: " + string(tokenBodyBytes),
 		})
 		return
 	}
 
-	// Check response code dari KYTAPAY
-	if atkResp.ResponseCode != "" && atkResp.ResponseCode != "2000100" && atkResp.ResponseCode != "200" && !strings.HasPrefix(atkResp.ResponseCode, "200") {
-		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
-			Success: false,
-			Message: atkResp.ResponseMessage,
-		})
-		return
+	// Check response code - lebih fleksibel untuk support kedua platform
+	if atkResp.ResponseCode != "" {
+		// Accept: 200, 2000100 (KYTAPAY), atau code lain yang diawali 200
+		isSuccess := atkResp.ResponseCode == "200" ||
+			atkResp.ResponseCode == "2000100" ||
+			strings.HasPrefix(atkResp.ResponseCode, "200")
+
+		if !isSuccess {
+			utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
+				Success: false,
+				Message: atkResp.ResponseMessage,
+			})
+			return
+		}
 	}
 
 	if atkResp.ResponseData.AccessToken == "" {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
 			Success: false,
-			Message: "KYTAPAY token kosong",
+			Message: "Token pembayaran kosong",
 		})
 		return
 	}
@@ -338,9 +363,12 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 	}
 	payoutJSON, _ := json.Marshal(payoutBody)
 
-	req2, err := http.NewRequest(http.MethodPost, "https://api.kytapay.com/v2/payouts/transfers", bytes.NewReader(payoutJSON))
+	req2, err := http.NewRequest(http.MethodPost, apiURL+"/payouts/transfers", bytes.NewReader(payoutJSON))
 	if err != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal membuat request payout"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal membuat request payout",
+		})
 		return
 	}
 
@@ -349,19 +377,25 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 
 	resp2, err := client.Do(req2)
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Koneksi ke KYTAPAY payout gagal: " + err.Error()})
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
+			Success: false,
+			Message: "Koneksi ke payment gateway gagal: " + err.Error(),
+		})
 		return
 	}
 	defer resp2.Body.Close()
 
-	// KUNCI: Selalu baca response body terlebih dahulu
+	// Read response body terlebih dahulu
 	payoutBodyBytes, readErr2 := io.ReadAll(resp2.Body)
 	if readErr2 != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal membaca response payout"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal membaca response payout",
+		})
 		return
 	}
 
-	// Parse response terlebih dahulu
+	// Parse response
 	var payoutResp struct {
 		ResponseCode    string `json:"response_code"`
 		ResponseMessage string `json:"response_message"`
@@ -375,12 +409,12 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 
 	parseErr2 := json.Unmarshal(payoutBodyBytes, &payoutResp)
 
-	// Cek HTTP status code dari KYTAPAY
+	// Cek HTTP status code
 	if resp2.StatusCode < 200 || resp2.StatusCode >= 300 {
-		errorMsg := "KYTAPAY payout error"
+		errorMsg := "Gagal memproses payout"
 		if parseErr2 == nil && payoutResp.ResponseMessage != "" {
 			errorMsg = payoutResp.ResponseMessage
-		} else if len(payoutBodyBytes) > 0 {
+		} else if len(payoutBodyBytes) > 0 && len(payoutBodyBytes) < 500 {
 			errorMsg = string(payoutBodyBytes)
 		}
 		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
@@ -390,7 +424,7 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cek jika parsing gagal setelah HTTP status OK
+	// Cek parsing error
 	if parseErr2 != nil {
 		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
 			Success: false,
@@ -399,13 +433,20 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check KYTAPAY response code
-	if payoutResp.ResponseCode != "" && payoutResp.ResponseCode != "2001000" && payoutResp.ResponseCode != "200" && !strings.HasPrefix(payoutResp.ResponseCode, "200") {
-		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
-			Success: false,
-			Message: payoutResp.ResponseMessage,
-		})
-		return
+	// Check response code - support kedua platform
+	if payoutResp.ResponseCode != "" {
+		// Accept: 200, 2001000 (KYTAPAY), atau code lain yang diawali 200
+		isSuccess := payoutResp.ResponseCode == "200" ||
+			payoutResp.ResponseCode == "2001000" ||
+			strings.HasPrefix(payoutResp.ResponseCode, "200")
+
+		if !isSuccess {
+			utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{
+				Success: false,
+				Message: payoutResp.ResponseMessage,
+			})
+			return
+		}
 	}
 
 	// Start transaction
@@ -425,12 +466,18 @@ func ApproveWithdrawal(w http.ResponseWriter, r *http.Request) {
 	// Update related transaction status
 	if err := tx.Model(&models.Transaction{}).Where("order_id = ?", withdrawal.OrderID).Update("status", "Success").Error; err != nil {
 		tx.Rollback()
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal memperbarui status transaksi"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal memperbarui status transaksi",
+		})
 		return
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{Success: false, Message: "Gagal menyimpan perubahan"})
+		utils.WriteJSON(w, http.StatusInternalServerError, utils.APIResponse{
+			Success: false,
+			Message: "Gagal menyimpan perubahan",
+		})
 		return
 	}
 

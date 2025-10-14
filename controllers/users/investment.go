@@ -238,9 +238,9 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 	orderID := utils.GenerateOrderID(uid)
 	referenceID := orderID
 
-	accessToken, errMsg, err := getKytaAccessTokenSafe(r.Context(), httpClient, kytapayBase, kytapayClientID, kytapayClientSecret)
+	accessToken, _, err := getKytaAccessTokenSafe(r.Context(), httpClient, kytapayBase, kytapayClientID, kytapayClientSecret)
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: errMsg})
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Terjadi kesalahan saat memanggil layanan pembayaran"})
 		return
 	}
 
@@ -258,13 +258,13 @@ func CreateInvestmentHandler(w http.ResponseWriter, r *http.Request) {
 
 	var payResp *KytaPaymentResponse
 	if method == "QRIS" {
-		payResp, errMsg, err = createKytaQRISSafe(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), notifyURL, successURL, failedURL)
+		payResp, _, err = createKytaQRISSafe(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), notifyURL, successURL, failedURL)
 	} else {
-		payResp, errMsg, err = createKytaVASafe(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), channel, notifyURL, successURL, failedURL)
+		payResp, _, err = createKytaVASafe(r.Context(), httpClient, kytapayBase, accessToken, referenceID, int64(amount), channel, notifyURL, successURL, failedURL)
 	}
 
 	if err != nil {
-		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: errMsg})
+		utils.WriteJSON(w, http.StatusBadRequest, utils.APIResponse{Success: false, Message: "Terjadi kesalahan saat memanggil layanan pembayaran"})
 		return
 	}
 	if payResp == nil {
