@@ -139,7 +139,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		UserID:          newUser.ID,
 		Amount:          2000,
 		Charge:          0,
-		OrderID:         fmt.Sprintf("INV-%d%d", time.Now().Unix(), newUser.ID),
+		OrderID:         utils.GenerateOrderID(newUser.ID),
 		TransactionFlow: "debit",
 		TransactionType: "bonus",
 		Message:         ptrString("Bonus pendaftaran"),
