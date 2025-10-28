@@ -74,7 +74,7 @@ func NewIPRateLimiter(maxReq int, window time.Duration) *IPRateLimiter {
 // (removed wrapper) use clientIPGeneric directly where needed
 
 // clientIPGeneric returns the client IP string. If trustedCIDR is provided,
-// X-Forwarded-For / X-Real-IP headers are honored when remote addr is inside
+// X-Forwarded-For / X-Real-IP / CF-Connecting-IP headers are honored when remote addr is inside
 // one of the trusted CIDRs or IPs.
 func clientIPGeneric(r *http.Request, trustedCIDR []string) string {
 	remoteHost, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -100,14 +100,20 @@ func clientIPGeneric(r *http.Request, trustedCIDR []string) string {
 		}
 	}
 	if trusted {
+		// Priority 1: CF-Connecting-IP (Cloudflare real client IP)
+		if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
+			return strings.TrimSpace(cfIP)
+		}
+		// Priority 2: X-Real-IP (from Nginx)
+		if xr := r.Header.Get("X-Real-IP"); xr != "" {
+			return strings.TrimSpace(xr)
+		}
+		// Priority 3: X-Forwarded-For (first IP in chain)
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
 			if len(parts) > 0 {
 				return strings.TrimSpace(parts[0])
 			}
-		}
-		if xr := r.Header.Get("X-Real-IP"); xr != "" {
-			return strings.TrimSpace(xr)
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
